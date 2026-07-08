@@ -28,8 +28,10 @@ export class RaycastShootingSystem {
     this.manager = manager;
   }
 
-  /** Casts from the crosshair screen position. The returned object is reused between calls. */
+  /** Casts from the crosshair screen position (CSS pixels). The returned object is reused between calls. */
   shoot(screenX: number, screenY: number): ShotResult {
+    // NOTE: createPickingRayToRef expects CSS/client pixels — it converts to the
+    // render buffer internally (× 1/hardwareScalingLevel). Do NOT pre-convert.
     this.scene.createPickingRayToRef(screenX, screenY, null, this.ray, this.camera);
     this.ray.length = WEAPON.RANGE;
 

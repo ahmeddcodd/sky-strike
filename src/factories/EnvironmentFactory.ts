@@ -76,9 +76,9 @@ export class Environment {
   }
 
   private createSkyDome(): void {
-    const tex = new DynamicTexture("skyTex", { width: 4, height: 256 }, this.scene, false);
+    const tex = new DynamicTexture("skyTex", { width: 8, height: 512 }, this.scene, false);
     const ctx = tex.getContext() as CanvasRenderingContext2D;
-    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
     grad.addColorStop(0, "#1d5fc0"); // zenith
     grad.addColorStop(0.38, "#4b8dda");
     grad.addColorStop(0.58, "#8fc0ea");
@@ -86,7 +86,15 @@ export class Environment {
     grad.addColorStop(0.78, "#efe7d5"); // warm haze at the horizon
     grad.addColorStop(1, "#8fb6d8");
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 4, 256);
+    ctx.fillRect(0, 0, 8, 512);
+    // faint per-pixel noise dithers the gradient — kills banding on mobile screens
+    const rand = seededRand(29);
+    for (let y = 0; y < 512; y++) {
+      for (let x = 0; x < 8; x++) {
+        ctx.fillStyle = `rgba(${rand() > 0.5 ? 255 : 0},${rand() > 0.5 ? 255 : 0},${rand() > 0.5 ? 255 : 0},0.012)`;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
     tex.update(false);
 
     const dome = CreateSphere("sky", { diameter: 1000, segments: 12, sideOrientation: Mesh.BACKSIDE }, this.scene);

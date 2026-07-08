@@ -3,8 +3,9 @@ import { INPUT, JOYSTICK } from "../game/Constants";
 // Adaptive controls (spec §8):
 // - Mouse ("desktop") mode: the crosshair follows the mouse directly (the OS
 //   cursor is hidden by the HUD), hold any button to fire. No joystick.
-// - Touch mode: virtual joystick under the jet (rate control) OR drag anywhere
-//   (delta control); holding either fires.
+// - Touch mode: virtual joystick under the jet (DIRECT mapping — stick position
+//   mirrors crosshair position, release recenters) OR drag anywhere (delta
+//   control); holding either fires.
 // The mode follows the last-used pointer type, so hybrid laptops switch live.
 
 type PointerMode = "drag" | "joystick";
@@ -103,6 +104,11 @@ export class InputSystem {
   }
 
   private releaseJoystick(): void {
+    if (this.joystickActive) {
+      // direct mapping recenters on release — glide back to the anchor
+      this.targetX = window.innerWidth / 2;
+      this.targetY = window.innerHeight * 0.42;
+    }
     this.joystickActive = false;
     this.joyX = 0;
     this.joyY = 0;
@@ -146,19 +152,32 @@ export class InputSystem {
   }
 
   update(dt: number): void {
+    let smoothing: number = INPUT.CROSSHAIR_SMOOTHING;
+
     if (this.joystickActive) {
+      // direct mapping: the crosshair sits where the stick points, instantly
+      // proportional — anchored at the crosshair home position
+      const anchorX = window.innerWidth / 2;
+      const anchorY = window.innerHeight * 0.42;
+      const reachX = anchorX - INPUT.EDGE_MARGIN;
+      const reachY = anchorY - INPUT.EDGE_MARGIN;
+
       const len = Math.hypot(this.joyX, this.joyY);
       if (len > JOYSTICK.DEADZONE) {
-        // rate control: deflection past the deadzone sets crosshair velocity
-        const strength = (len - JOYSTICK.DEADZONE) / (1 - JOYSTICK.DEADZONE);
-        const speed = JOYSTICK.SPEED * window.innerHeight * strength;
-        this.targetX += (this.joyX / len) * speed * dt;
-        this.targetY += (this.joyY / len) * speed * dt;
-        this.clampTarget();
+        // expo curve on the deflection length: fine aim near center, full range at the rim
+        const normalized = Math.min(1, (len - JOYSTICK.DEADZONE) / (1 - JOYSTICK.DEADZONE));
+        const curved = Math.pow(normalized, JOYSTICK.EXPO);
+        this.targetX = anchorX + (this.joyX / len) * curved * reachX;
+        this.targetY = anchorY + (this.joyY / len) * curved * reachY;
+      } else {
+        this.targetX = anchorX;
+        this.targetY = anchorY;
       }
+      this.clampTarget();
+      smoothing = JOYSTICK.SNAP;
     }
 
-    const k = Math.min(1, INPUT.CROSSHAIR_SMOOTHING * dt);
+    const k = Math.min(1, smoothing * dt);
     this.x += (this.targetX - this.x) * k;
     this.y += (this.targetY - this.y) * k;
   }

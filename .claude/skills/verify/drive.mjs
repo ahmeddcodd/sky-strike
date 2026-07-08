@@ -18,6 +18,7 @@ const browser = await chromium.launch({
 const context = await browser.newContext({
   viewport: { width: 390, height: 844 },
   hasTouch: true,
+  deviceScaleFactor: 2, // hits > 0 proves the raycast CSS→render-px conversion is right
 });
 const page = await context.newPage();
 page.on("console", (msg) => consoleLogs.push(`[${msg.type()}] ${msg.text()}`));

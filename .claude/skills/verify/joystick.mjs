@@ -59,29 +59,47 @@ console.log("=== desktop mode ===");
   await page.close();
 }
 
-// ---------- touch (joystick) + live switch back to mouse ----------
-console.log("=== touch mode ===");
+// ---------- touch (joystick, direct mapping) at phone DPR + live switch back to mouse ----------
+console.log("=== touch mode (deviceScaleFactor 2) ===");
 {
-  const page = await browser.newPage({ viewport: { width: W, height: H }, hasTouch: true });
+  const page = await browser.newPage({ viewport: { width: W, height: H }, hasTouch: true, deviceScaleFactor: 2 });
   page.on("pageerror", (err) => console.log("PAGEERROR[touch]:", err));
   const cdp = await page.context().newCDPSession(page);
   const touch = (type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
 
   await page.goto(`http://localhost:${PORT}/?debug=1`, { waitUntil: "load" });
   await page.waitForTimeout(2300);
+
+  // native-DPR rendering: render buffer should be CSS × min(DPR, 2)
+  const renderSize = await page.evaluate(() => {
+    const engine = window.__scene.getEngine();
+    return { w: engine.getRenderWidth(), h: engine.getRenderHeight() };
+  });
+  console.log("render buffer:", renderSize, `(want ~${W * 2}x${H * 2})`);
+
   await touch("touchStart", [{ x: W / 2, y: H * 0.6 }]); // start game
   await touch("touchEnd", []);
   await page.waitForTimeout(600);
   console.log("joystick visible:", await joystickVisible(page), "(want true)");
 
-  const before = await crosshair(page);
+  // direct mapping: full up-right deflection → crosshair at anchor + reach·(0.707,-0.707)
+  const anchor = { x: W / 2, y: H * 0.42 };
+  const expectX = anchor.x + 0.707 * (W / 2 - 18);
+  const expectY = anchor.y - 0.707 * (anchor.y - 18);
   await touch("touchStart", [{ x: JOY.x, y: JOY.y }]);
   await touch("touchMove", [{ x: JOY.x + 40, y: JOY.y - 40 }]);
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(500);
   await page.screenshot({ path: `${SHOTS}/touch-joystick.png` });
   const during = await crosshair(page);
+  console.log(`direct map: got (${during.x.toFixed(0)}, ${during.y.toFixed(0)}) want (~${expectX.toFixed(0)}, ~${expectY.toFixed(0)}) |`,
+    "match:", Math.abs(during.x - expectX) < 12 && Math.abs(during.y - expectY) < 12);
+
+  // release → crosshair recenters to the anchor
   await touch("touchEnd", []);
-  console.log("joystick aim:", before, "->", during, "| moved up-right:", during.x > before.x + 30 && during.y < before.y - 30);
+  await page.waitForTimeout(400);
+  const released = await crosshair(page);
+  console.log(`recenter: got (${released.x.toFixed(0)}, ${released.y.toFixed(0)}) want (~${anchor.x}, ~${anchor.y.toFixed(0)}) |`,
+    "match:", Math.abs(released.x - anchor.x) < 10 && Math.abs(released.y - anchor.y) < 10);
 
   // a mouse movement flips back to desktop mode
   await page.mouse.move(W / 2, 300);

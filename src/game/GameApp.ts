@@ -56,6 +56,7 @@ export class GameApp {
       doNotHandleContextLost: true,
       powerPreference: "high-performance",
     });
+    this.applyResolution();
     this.scene = new Scene(this.engine);
     this.scene.skipPointerMovePicking = true;
 
@@ -103,7 +104,17 @@ export class GameApp {
     this.playables.onResume = () => this.setPaused(false);
     this.playables.onAudioChange = (enabled) => this.audio.setMuted(!enabled);
     document.addEventListener("visibilitychange", () => this.setPaused(document.hidden));
-    window.addEventListener("resize", () => this.engine.resize());
+    window.addEventListener("resize", () => {
+      this.applyResolution(); // DPR can change (window moved between monitors)
+      this.engine.resize();
+    });
+  }
+
+  /** Render at native device resolution (capped at 2×) — CSS-resolution rendering
+   *  is what made the game blurry and washed-out on phones with DPR 2-3. */
+  private applyResolution(): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.engine.setHardwareScalingLevel(1 / dpr);
   }
 
   start(): void {
@@ -141,9 +152,10 @@ export class GameApp {
     this.vfx.getShakeOffset(this.shakeTmp);
     this.camera.position.copyFrom(this.baseCamPos).addInPlace(this.shakeTmp);
 
-    // cosmetic: the player jet banks/drifts toward the crosshair (NDC space)
-    const ndcX = (this.input.x / Math.max(1, this.engine.getRenderWidth())) * 2 - 1;
-    const ndcY = (this.input.y / Math.max(1, this.engine.getRenderHeight())) * 2 - 1;
+    // cosmetic: the player jet banks/drifts toward the crosshair (NDC space).
+    // CSS-pixel based so it's independent of the render buffer's DPR scaling.
+    const ndcX = (this.input.x / Math.max(1, window.innerWidth)) * 2 - 1;
+    const ndcY = (this.input.y / Math.max(1, window.innerHeight)) * 2 - 1;
     this.playerJet.update(dt, ndcX, ndcY);
 
     if (this.state === "playing") {
@@ -210,12 +222,18 @@ export class GameApp {
     else this.audio.resume();
   }
 
+  /** World point → CSS-pixel screen coords (for DOM popups). */
   private project(point: Vector3): Vector3 {
-    return Vector3.Project(
+    const coords = Vector3.Project(
       point,
       Matrix.IdentityReadOnly,
       this.scene.getTransformMatrix(),
       this.camera.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight()),
     );
+    // Vector3.Project returns render-buffer pixels; DOM lives in CSS pixels
+    const scale = this.engine.getHardwareScalingLevel();
+    coords.x *= scale;
+    coords.y *= scale;
+    return coords;
   }
 }

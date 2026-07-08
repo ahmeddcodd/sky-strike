@@ -6,8 +6,8 @@ const PORT = process.env.GAME_PORT ?? "5174"; // dev server; set GAME_PORT=4173 
 const SHOTS = process.argv[2] ?? "./verify-shots";
 const browser = await chromium.launch({ channel: "msedge", headless: true, args: ["--enable-unsafe-swiftshader"] });
 
-async function drive(viewport, tag) {
-  const page = await browser.newPage({ viewport, hasTouch: true });
+async function drive(viewport, tag, deviceScaleFactor = 1) {
+  const page = await browser.newPage({ viewport, hasTouch: true, deviceScaleFactor });
   page.on("pageerror", (err) => console.log(`PAGEERROR[${tag}]:`, err));
   await page.goto(`http://localhost:${PORT}/?debug=1`, { waitUntil: "load" });
   await page.waitForTimeout(2500);
@@ -26,7 +26,7 @@ async function drive(viewport, tag) {
   await page.close();
 }
 
-await drive({ width: 390, height: 844 }, "portrait");
+await drive({ width: 390, height: 844 }, "portrait", 3); // phone-like DPR — output should be sharp
 await drive({ width: 1280, height: 720 }, "landscape");
 await browser.close();
 console.log("DONE");
