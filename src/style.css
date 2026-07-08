@@ -1,0 +1,386 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0b2547;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+
+/* mouse mode: the crosshair IS the cursor (menus/overlays keep the OS cursor) */
+body.mouse-mode #game {
+  cursor: none;
+}
+
+/* ---------- HUD overlay ---------- */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  color: #fff;
+}
+
+.hud-top {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hearts {
+  display: flex;
+  gap: 5px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+}
+
+.heart {
+  width: 26px;
+  height: 26px;
+  transition: transform 0.15s, opacity 0.2s;
+}
+
+.heart.lost {
+  opacity: 0.22;
+  transform: scale(0.82);
+  filter: grayscale(1);
+}
+
+.hearts.shake {
+  animation: heartShake 0.4s;
+}
+
+@keyframes heartShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
+.score-box {
+  text-align: right;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.score-value {
+  font-size: 26px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.score-value.pop {
+  animation: scorePop 0.2s;
+}
+
+@keyframes scorePop {
+  50% { transform: scale(1.18); }
+}
+
+.score-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  opacity: 0.75;
+  margin-top: 3px;
+}
+
+/* ---------- Crosshair ---------- */
+
+.crosshair {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  will-change: transform, left, top;
+}
+
+.crosshair svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+
+.crosshair.firing svg {
+  animation: crossPulse 0.12s infinite;
+}
+
+@keyframes crossPulse {
+  50% { transform: scale(1.08); }
+}
+
+.crosshair .hitmark {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.crosshair.hit .hitmark {
+  animation: hitMark 0.18s;
+}
+
+@keyframes hitMark {
+  0% { opacity: 1; transform: scale(0.7); }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+
+/* ---------- Score popups ---------- */
+
+.popup {
+  position: absolute;
+  font-size: 19px;
+  font-weight: 800;
+  font-style: italic;
+  color: #ffd75e;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.popup.live {
+  animation: popupRise 0.7s ease-out forwards;
+}
+
+@keyframes popupRise {
+  0% { opacity: 0; margin-top: 0; transform: translate(-50%, -50%) scale(0.6); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  30% { transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; margin-top: -46px; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ---------- Damage vignette ---------- */
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(255, 20, 20, 0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.vignette.flash {
+  opacity: 1;
+  transition: opacity 0.05s;
+}
+
+/* ---------- Fullscreen overlays ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: rgba(4, 18, 40, 0.55);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+
+.overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-title {
+  font-size: clamp(38px, 11vw, 64px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 2px;
+  background: linear-gradient(180deg, #ffffff, #9fd4ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 10px rgba(0, 40, 90, 0.7));
+}
+
+.game-title small {
+  display: block;
+  font-size: 0.34em;
+  letter-spacing: 10px;
+  -webkit-text-fill-color: #ffd75e;
+  margin-top: 2px;
+}
+
+.tap-hint {
+  margin-top: 42px;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0.25; }
+}
+
+.control-hint {
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  opacity: 0.75;
+}
+
+.over-title {
+  font-size: clamp(34px, 10vw, 56px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 3px;
+  color: #ff5b4d;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.stats {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 9px 22px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.stats .k {
+  text-align: right;
+  opacity: 0.7;
+  letter-spacing: 1px;
+}
+
+.stats .v {
+  text-align: left;
+  font-weight: 800;
+  color: #ffd75e;
+}
+
+.best-banner {
+  margin-top: 16px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #7dffb0;
+}
+
+.btn {
+  margin-top: 34px;
+  padding: 15px 52px;
+  font-size: 19px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 3px;
+  color: #06264f;
+  background: linear-gradient(180deg, #ffe9a3, #ffb63d);
+  border: none;
+  border-radius: 40px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn:active {
+  transform: scale(0.95);
+}
+
+/* ---------- Virtual joystick ---------- */
+
+.joystick {
+  position: absolute;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.4);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.06) 55%, rgba(255, 255, 255, 0.16) 100%);
+  box-shadow: 0 4px 14px rgba(0, 20, 50, 0.25);
+  opacity: 0.65;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+
+.joystick.active {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 30%, #ffffff, #b8dcf2 60%, #7db7dd);
+  box-shadow: 0 3px 10px rgba(0, 20, 50, 0.45), inset 0 -3px 6px rgba(40, 90, 140, 0.35);
+  will-change: transform;
+}
+
+.joystick.active .joystick-knob {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #9fe2f8 60%, #35c8e8);
+}
+
+/* ---------- Warning banner ---------- */
+
+.warning {
+  position: absolute;
+  top: 22%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #ff4d4d;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+}
+
+.warning.live {
+  animation: warnFlash 0.9s;
+}
+
+@keyframes warnFlash {
+  0%, 100% { opacity: 0; }
+  15%, 45%, 75% { opacity: 1; }
+  30%, 60% { opacity: 0.2; }
+}
+
+/* ---------- Debug overlay ---------- */
+
+.debug-panel {
+  position: absolute;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  left: 8px;
+  font: 11px/1.5 Consolas, monospace;
+  color: #7dffb0;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 6px 9px;
+  border-radius: 6px;
+  white-space: pre;
+  pointer-events: none;
+}
