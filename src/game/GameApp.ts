@@ -147,7 +147,6 @@ export class GameApp {
 
     this.hud.setCrosshair(this.input.x, this.input.y);
     this.hud.setFiring(this.input.firing && this.state === "playing");
-    this.hud.setJoystick(this.input.joyX, this.input.joyY, this.input.joystickActive);
 
     this.vfx.getShakeOffset(this.shakeTmp);
     this.camera.position.copyFrom(this.baseCamPos).addInPlace(this.shakeTmp);

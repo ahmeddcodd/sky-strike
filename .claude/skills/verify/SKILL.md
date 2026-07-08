@@ -22,7 +22,7 @@ Playwright is a devDependency and uses system Edge — no browser download:
   - `quick.mjs` — visual check in portrait AND landscape, with a motion pair (play-A/play-B 1 s apart) to confirm the world scroll.
   - `burst.mjs` — 8 rapid screenshots while holding fire, to catch short-lived tracers/muzzle flashes.
   - `probe.mjs` — live scene interrogation: in debug builds `window.__scene` is exposed, so `page.evaluate` can inspect any mesh/material/texture (this is how the ocean CLAMP-vs-WRAP texture bug was found) and recolor meshes to locate them on screen.
-  - `joystick.mjs` — virtual joystick: deflect the knob (base center is `(width/2, height − JOYSTICK.BOTTOM_OFFSET)`), assert the crosshair glides and fires, knob recenters on release, and drag-anywhere aiming still works. Touches must start OUTSIDE the joystick grab zone (~94 px around the base) to test drag aiming.
+  - `controls.mjs` — both control schemes: desktop mouse-follow with hidden cursor + hold-to-fire, and touch drag (crosshair moves by finger delta × `INPUT.DRAG_GAIN`, holds fire, position persists on release). Touch is dispatched via CDP `Input.dispatchTouchEvent`; runs at deviceScaleFactor 2. There is no joystick (removed at user request).
 - Launch options that matter: `channel: "msedge"`, `headless: true`, `args: ["--enable-unsafe-swiftshader"]` (software WebGL), viewport 390×844, `hasTouch: true`.
 - Load `http://localhost:<port>/?debug=1` to get the DebugSystem even in prod builds.
 
@@ -30,6 +30,7 @@ Playwright is a devDependency and uses system Edge — no browser download:
 
 - Start: `.tap-hint` visible → `page.touchscreen.tap(195, 500)` starts the game.
 - Fire: `page.mouse.down()` + sweep moves = drag-aim + hold-fire; score in `.score-value`, hit/shot counts in `.debug-panel`.
+- Aim: desktop = mouse-follow (no button); touch = drag anywhere (delta × DRAG_GAIN). Hold fires in both.
 - Debug hotkeys (keyboard): `` ` `` toggle hitboxes/ray/danger plane · `J` spawn jet · `C` clear · `I` invincible.
 - Game over: stop shooting ~30–60 s → `.over-title` appears; stats in `.stats`; restart via `pointerdown` on `.btn` (NOT `click` — the button listens to pointerdown).
 - Persistence: reload and check `.best-banner` shows `BEST <n>` (localStorage fallback of PlayablesSDK).

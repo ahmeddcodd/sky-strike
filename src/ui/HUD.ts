@@ -1,4 +1,4 @@
-import { JOYSTICK, PLAYER, VFX } from "../game/Constants";
+import { PLAYER, VFX } from "../game/Constants";
 
 // DOM/CSS HUD overlay (deliberate deviation from spec §39's Babylon GUI:
 // sharper text on high-DPI mobile, no fullscreen GUI texture, smaller bundle).
@@ -46,8 +46,6 @@ export class HUD {
   private overOverlay: HTMLDivElement;
   private overStats: HTMLDivElement;
   private overBest: HTMLDivElement;
-  private joyBase: HTMLDivElement;
-  private joyKnob: HTMLDivElement;
   private controlHint: HTMLDivElement;
   private popups: { el: HTMLDivElement; busy: boolean }[] = [];
 
@@ -79,15 +77,6 @@ export class HUD {
 
     this.warningEl = el("div", "warning", root);
 
-    // virtual joystick under the jet — geometry comes from the same constants
-    // InputSystem uses for its capture zone, so ring and hit area always align
-    this.joyBase = el("div", "joystick", root);
-    this.joyBase.style.width = `${JOYSTICK.RADIUS * 2}px`;
-    this.joyBase.style.height = `${JOYSTICK.RADIUS * 2}px`;
-    this.joyBase.style.left = `calc(50% - ${JOYSTICK.RADIUS}px)`;
-    this.joyBase.style.bottom = `${JOYSTICK.BOTTOM_OFFSET - JOYSTICK.RADIUS}px`;
-    this.joyKnob = el("div", "joystick-knob", this.joyBase);
-
     for (let i = 0; i < VFX.POPUP_POOL; i++) {
       const popup = el("div", "popup", root);
       const entry = { el: popup, busy: false };
@@ -105,7 +94,7 @@ export class HUD {
     this.startBest = el("div", "best-banner", this.startOverlay);
     el("div", "tap-hint", this.startOverlay).textContent = "TAP TO START";
     this.controlHint = el("div", "control-hint", this.startOverlay);
-    this.controlHint.textContent = "JOYSTICK OR DRAG TO AIM · HOLD TO FIRE";
+    this.controlHint.textContent = "DRAG TO AIM · HOLD TO FIRE";
     this.startOverlay.addEventListener("pointerdown", () => {
       if (this.startOverlay.classList.contains("hidden")) return;
       this.startOverlay.classList.add("hidden");
@@ -135,20 +124,12 @@ export class HUD {
     this.crosshairEl.classList.toggle("firing", firing);
   }
 
-  /** Mouse mode hides the joystick and the OS cursor (crosshair only); touch mode restores them. */
+  /** Mouse mode hides the OS cursor (the crosshair is the pointer); touch mode restores it. */
   setTouchMode(touch: boolean): void {
-    this.joyBase.style.display = touch ? "block" : "none";
     this.controlHint.textContent = touch
-      ? "JOYSTICK OR DRAG TO AIM · HOLD TO FIRE"
+      ? "DRAG TO AIM · HOLD TO FIRE"
       : "MOVE MOUSE TO AIM · HOLD TO FIRE";
     document.body.classList.toggle("mouse-mode", !touch);
-  }
-
-  /** jx/jy: knob deflection in [-1, 1]; the knob slides up to the ring radius. */
-  setJoystick(jx: number, jy: number, active: boolean): void {
-    this.joyKnob.style.transform =
-      `translate(calc(-50% + ${(jx * JOYSTICK.RADIUS).toFixed(1)}px), calc(-50% + ${(jy * JOYSTICK.RADIUS).toFixed(1)}px))`;
-    this.joyBase.classList.toggle("active", active);
   }
 
   hitMarker(): void {

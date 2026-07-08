@@ -92,16 +92,6 @@ export const INPUT = {
   EDGE_MARGIN: 18, // px the crosshair keeps from screen edges
 } as const;
 
-export const JOYSTICK = {
-  RADIUS: 52, // base ring radius (px); the knob clamps to this
-  GRAB_FACTOR: 1.8, // touches within RADIUS × this capture the stick (forgiving thumb zone)
-  BOTTOM_OFFSET: 112, // base center distance from the bottom edge (px) — sits under the jet
-  DEADZONE: 0.06, // deflection below this is ignored
-  // Direct mapping: stick position = crosshair position (release recenters).
-  EXPO: 1.3, // deflection response curve — fine aim near center, full range at the rim
-  SNAP: 35, // crosshair follow speed while the stick drives (snappier than drag smoothing)
-} as const;
-
 export const DIFFICULTY_CLAMP_DT = 1 / 30; // max delta time fed to game logic
 
 export const SAVE_KEY = "skystrike3d_save_v1";

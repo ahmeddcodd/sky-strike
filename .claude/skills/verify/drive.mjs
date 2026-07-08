@@ -68,12 +68,16 @@ console.log("debug panel:", JSON.stringify(await text(".debug-panel")));
 
 step("debug off, wait for game over (stop shooting)");
 await page.keyboard.press("Backquote");
-const overTitle = page.locator(".over-title");
+// NOTE: the overlay hides via opacity, so Playwright's :visible is always true —
+// wait for the `hidden` class to actually drop instead
 try {
-  await overTitle.waitFor({ state: "visible", timeout: 75000 });
+  await page.waitForFunction(
+    () => !document.querySelector(".over-title").closest(".overlay").classList.contains("hidden"),
+    { timeout: 90000 },
+  );
   console.log("game over reached");
 } catch {
-  console.log("GAME OVER NOT REACHED IN 75s");
+  console.log("GAME OVER NOT REACHED IN 90s");
 }
 await page.waitForTimeout(600);
 await shot("05-gameover");

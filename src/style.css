@@ -310,40 +310,6 @@ body.mouse-mode #game {
   transform: scale(0.95);
 }
 
-/* ---------- Virtual joystick ---------- */
-
-.joystick {
-  position: absolute;
-  border-radius: 50%;
-  border: 2.5px solid rgba(255, 255, 255, 0.4);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.06) 55%, rgba(255, 255, 255, 0.16) 100%);
-  box-shadow: 0 4px 14px rgba(0, 20, 50, 0.25);
-  opacity: 0.65;
-  transition: opacity 0.2s, border-color 0.2s;
-}
-
-.joystick.active {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.75);
-}
-
-.joystick-knob {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle at 35% 30%, #ffffff, #b8dcf2 60%, #7db7dd);
-  box-shadow: 0 3px 10px rgba(0, 20, 50, 0.45), inset 0 -3px 6px rgba(40, 90, 140, 0.35);
-  will-change: transform;
-}
-
-.joystick.active .joystick-knob {
-  background: radial-gradient(circle at 35% 30%, #ffffff, #9fe2f8 60%, #35c8e8);
-}
-
 /* ---------- Warning banner ---------- */
 
 .warning {
