@@ -29,17 +29,14 @@ import type { VFXSystem } from "../systems/VFXSystem";
 const OCEAN_SIZE = 1600;
 const OCEAN_TILES = 8;
 
-// sky gradient keyframes — identical stop positions so colors lerp cleanly.
-// "DAY" is a warm tropical sunset (top mauve → pink → salmon → orange → hot
-// yellow band → warm horizon); DUSK deepens it as the sun sinks with the waves.
+// sky gradient keyframes — identical stop positions so colors lerp cleanly
 const SKY_STOPS = [0, 0.38, 0.58, 0.7, 0.78, 1];
-const SKY_DAY = ["#4a3d6e", "#7d5688", "#c07575", "#ec9a58", "#ffd98a", "#ffbe86"];
-const SKY_DUSK = ["#2a1e48", "#5a3566", "#a85566", "#d5703e", "#e8863f", "#5a3a5c"];
+const SKY_DAY = ["#1d5fc0", "#4b8dda", "#8fc0ea", "#d3e8f7", "#efe7d5", "#8fb6d8"];
+const SKY_DUSK = ["#1c2b5e", "#4b4a8e", "#b06a7e", "#e89a63", "#f7bd68", "#6f5a78"];
 // moonlit navy — bright enough that jets and ocean stay readable
 const SKY_NIGHT = ["#0b1530", "#142448", "#1e3560", "#2a4878", "#345381", "#182a4d"];
 
-// warm dusk haze so distance melts into the sunset instead of turning blue
-const FOG_DAY = new Color3(0.86, 0.62, 0.5);
+const FOG_DAY = new Color3(0.66, 0.8, 0.92);
 const FOG_NIGHT = new Color3(0.1, 0.16, 0.27);
 
 interface DriftCloud {
@@ -79,7 +76,6 @@ export class Environment {
   private oceanTex!: DynamicTexture;
   private oceanMat!: StandardMaterial;
   private sunPlane!: Mesh;
-  private sunReflect!: Mesh;
   private moonPlane!: Mesh;
   private searchlights: { pivot: TransformNode; beam: Mesh; phase: number }[] = [];
   private setPieces: SetPiece[] = [];
@@ -151,18 +147,6 @@ export class Environment {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 8, 512);
 
-    // warm horizon bloom around the sun (canvas y is high near the horizon);
-    // fades out as the sun sets into night
-    const glow = Math.max(0, 1 - n * 1.3);
-    if (glow > 0.01) {
-      const band = ctx.createLinearGradient(0, 300, 0, 470);
-      band.addColorStop(0, "rgba(255,240,205,0)");
-      band.addColorStop(0.55, `rgba(255,236,196,${(0.5 * glow).toFixed(3)})`);
-      band.addColorStop(1, `rgba(255,214,150,${(0.15 * glow).toFixed(3)})`);
-      ctx.fillStyle = band;
-      ctx.fillRect(0, 300, 8, 170);
-    }
-
     // faint noise dithers the gradient — kills banding on mobile screens
     const rand = seededRand(29);
     for (let y = 0; y < 512; y += 2) {
@@ -180,24 +164,20 @@ export class Environment {
 
     // the lights drive the whole lit world's brightness — a generous moonlight
     // floor keeps the night readable (playtest: full 0.3/0.18 was too dark)
-    // n=0 is warm sunset (not neutral day); it lerps toward cool moonlight
     this.hemi.intensity = 0.85 - 0.41 * n;
-    this.hemi.diffuse = Color3.Lerp(new Color3(1.0, 0.86, 0.78), new Color3(0.66, 0.74, 0.9), n);
-    this.hemi.groundColor = Color3.Lerp(new Color3(0.5, 0.42, 0.44), new Color3(0.14, 0.19, 0.3), n);
+    this.hemi.diffuse = Color3.Lerp(new Color3(1, 1, 1), new Color3(0.66, 0.74, 0.9), n);
+    this.hemi.groundColor = Color3.Lerp(new Color3(0.45, 0.55, 0.68), new Color3(0.14, 0.19, 0.3), n);
     this.sun.intensity = 1.0 - 0.64 * n;
-    this.sun.diffuse = Color3.Lerp(new Color3(1.0, 0.72, 0.45), new Color3(0.72, 0.8, 0.94), n);
+    this.sun.diffuse = Color3.Lerp(new Color3(1, 0.96, 0.88), new Color3(0.72, 0.8, 0.94), n);
 
     const fog = Color3.Lerp(FOG_DAY, FOG_NIGHT, n);
     this.scene.fogColor.copyFrom(fog);
     this.scene.clearColor.set(fog.r, fog.g, fog.b, 1);
 
-    // sunset ocean picks up warm sky at n=0 and cools to moonlit blue at night
-    this.oceanMat.diffuseColor = Color3.Lerp(new Color3(0.62, 0.5, 0.52), new Color3(0.44, 0.52, 0.66), n);
-    this.oceanMat.specularColor = Color3.Lerp(new Color3(0.7, 0.5, 0.3), new Color3(0.5, 0.56, 0.68), n);
+    this.oceanMat.diffuseColor = Color3.Lerp(new Color3(0.58, 0.62, 0.68), new Color3(0.44, 0.52, 0.66), n);
+    this.oceanMat.specularColor = Color3.Lerp(new Color3(0.4, 0.4, 0.34), new Color3(0.5, 0.56, 0.68), n);
 
     this.sunPlane.visibility = Math.max(0, 1 - n * 1.6);
-    this.sunReflect.visibility = Math.max(0, 1 - n * 1.7); // fades as the sun sets
-    this.sunReflect.setEnabled(n < 0.6);
     this.moonPlane.visibility = Math.max(0, (n - 0.35) / 0.65);
     const starVis = Math.max(0, (n - STARS.FADE_START) / (1 - STARS.FADE_START));
     this.starDome.visibility = starVis;
@@ -214,10 +194,8 @@ export class Environment {
   private createLights(): void {
     this.hemi = new HemisphericLight("hemi", new Vector3(0.2, 1, -0.3), this.scene);
     this.hemi.specular = Color3.Black(); // ambient specular washes the ocean out
-    // key light rakes low from the sun's direction so lit faces catch warm rim
-    // light and the ocean glints back toward the camera
-    this.sun = new DirectionalLight("sun", new Vector3(-0.15, -0.35, -0.9), this.scene);
-    this.sun.specular = new Color3(0.85, 0.6, 0.35); // warm gold glint
+    this.sun = new DirectionalLight("sun", new Vector3(-0.35, -0.6, -0.7), this.scene);
+    this.sun.specular = new Color3(0.7, 0.68, 0.6);
   }
 
   private createSkyDome(): void {
@@ -302,20 +280,15 @@ export class Environment {
       return plane;
     };
 
-    // low sun near the horizon: a contained warm disc with a soft bloom halo
-    // (a small bright core, not a blown-out flash)
+    // keep glow planes well inside the sky dome (radius 500) or they clip
     this.sunPlane = glow("sunGlow", [
-      [0, "rgba(255,250,235,1)"],
-      [0.12, "rgba(255,238,198,0.9)"],
-      [0.2, "rgba(255,214,150,0.4)"],
-      [0.4, "rgba(255,186,128,0.16)"],
-      [0.7, "rgba(255,172,112,0.05)"],
-      [1, "rgba(255,168,108,0)"],
+      [0, "rgba(255,255,250,1)"],
+      [0.1, "rgba(255,250,225,0.95)"],
+      [0.3, "rgba(255,242,200,0.45)"],
+      [0.65, "rgba(255,238,195,0.14)"],
+      [1, "rgba(255,236,190,0)"],
     ]);
-    this.sunPlane.scaling.setAll(0.82); // ~123 across — a contained orb
-    this.sunPlane.position.set(30, 10, 300);
-
-    this.createSunReflection();
+    this.sunPlane.position.set(95, 130, 300);
 
     this.moonPlane = glow("moonGlow", [
       [0, "rgba(235,242,255,1)"],
@@ -329,64 +302,10 @@ export class Environment {
     this.moonPlane.visibility = 0;
   }
 
-  // The sun's shimmering reflection column on the water — a tall warm streak
-  // that stays vertical (billboarded around Y only) below the sun.
-  private createSunReflection(): void {
-    const W = 96, H = 256;
-    const tex = new DynamicTexture("sunReflectTex", { width: W, height: H }, this.scene, false);
-    const ctx = tex.getContext() as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, W, H);
-    const rand = seededRand(555);
-    // Build the streak from many soft horizontal dashes of glimmer — brightest
-    // and widest near the top (the horizon under the sun), scattering and dimming
-    // downward. Reads as broken light on water, not a solid bar/ladder.
-    for (let y = 0; y < H; y += 2) {
-      const t = y / H;
-      const rows = 3 + Math.floor(rand() * 3);
-      for (let r = 0; r < rows; r++) {
-        const spread = 8 + t * 34; // wider spread of glints lower down
-        const cx = W / 2 + (rand() - 0.5) * spread * 2;
-        const halfLen = (10 + rand() * 22) * (1 - t * 0.5);
-        const a = (0.5 + rand() * 0.5) * Math.pow(1 - t, 1.4); // fade downward
-        const g = ctx.createLinearGradient(cx - halfLen, 0, cx + halfLen, 0);
-        g.addColorStop(0, "rgba(255,224,168,0)");
-        g.addColorStop(0.5, `rgba(255,232,186,${a.toFixed(3)})`);
-        g.addColorStop(1, "rgba(255,224,168,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(cx - halfLen, y, halfLen * 2, 1.6 + rand() * 1.6);
-      }
-    }
-    // a soft bright core right at the top where it meets the sun
-    const core = ctx.createRadialGradient(W / 2, 6, 2, W / 2, 6, 40);
-    core.addColorStop(0, "rgba(255,244,210,0.85)");
-    core.addColorStop(1, "rgba(255,240,200,0)");
-    ctx.fillStyle = core;
-    ctx.fillRect(0, 0, W, 60);
-    tex.update(false);
-    tex.hasAlpha = true;
-
-    const plane = CreatePlane("sunReflect", { width: 34, height: 115 }, this.scene);
-    const mat = new StandardMaterial("sunReflectMat", this.scene);
-    mat.emissiveTexture = tex;
-    mat.opacityTexture = tex;
-    mat.diffuseColor = Color3.Black();
-    mat.specularColor = Color3.Black();
-    mat.disableLighting = true;
-    mat.fogEnabled = false;
-    mat.alphaMode = 1; // additive
-    plane.material = mat;
-    plane.billboardMode = Mesh.BILLBOARDMODE_Y; // yaw to face camera, stays vertical
-    plane.isPickable = false;
-    plane.applyFog = false;
-    // top of the column meets the horizon under the sun; hangs down onto the water
-    plane.position.set(30, -30, 285);
-    this.sunReflect = plane;
-  }
-
   private createOcean(): void {
     const tex = new DynamicTexture("oceanTex", { width: 256, height: 256 }, this.scene, true);
     const ctx = tex.getContext() as CanvasRenderingContext2D;
-    ctx.fillStyle = "#2a4368"; // duskier teal-purple base (warm light tints it at sunset)
+    ctx.fillStyle = "#1b5687";
     ctx.fillRect(0, 0, 256, 256);
     // every feature is drawn at all 9 wrap offsets so the tile is seamless
     const wrapped = (draw: (dx: number, dy: number) => void) => {
@@ -398,7 +317,7 @@ export class Environment {
       const rx = 26 + this.rand() * 46;
       const ry = 10 + this.rand() * 18;
       wrapped((dx, dy) => {
-        ctx.fillStyle = "rgba(22,28,58,0.32)";
+        ctx.fillStyle = "rgba(10,50,90,0.3)";
         ctx.beginPath();
         ctx.ellipse(x + dx, y + dy, rx, ry, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -409,10 +328,9 @@ export class Environment {
       const y = this.rand() * 256;
       const rx = 6 + this.rand() * 20;
       const ry = 1.2 + this.rand() * 1.8;
-      const light = 0.16 + this.rand() * 0.2;
-      // warm-tinted wavelets so the water reads as sunset-lit, not blue
+      const light = 0.18 + this.rand() * 0.24;
       wrapped((dx, dy) => {
-        ctx.fillStyle = `rgba(232,196,168,${light.toFixed(2)})`;
+        ctx.fillStyle = `rgba(125,190,232,${light.toFixed(2)})`;
         ctx.beginPath();
         ctx.ellipse(x + dx, y + dy, rx, ry, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -423,7 +341,7 @@ export class Environment {
       const y = this.rand() * 256;
       const rx = 4 + this.rand() * 9;
       wrapped((dx, dy) => {
-        ctx.fillStyle = "rgba(255,238,208,0.5)";
+        ctx.fillStyle = "rgba(228,244,255,0.5)";
         ctx.beginPath();
         ctx.ellipse(x + dx, y + dy, rx, 1.3, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -469,9 +387,8 @@ export class Environment {
       ctx.closePath();
       ctx.fill();
     };
-    // dark warm silhouette ridges against the sunset (hazier = a touch lighter)
-    ridge(108, 48, "rgba(92,72,96,0.75)", 1.3); // far peaks, atmospheric haze
-    ridge(98, 30, "rgba(52,40,58,0.92)", 4.1); // near ridge, darker
+    ridge(108, 48, "rgba(200,216,235,0.85)", 1.3); // far peaks, hazier
+    ridge(98, 30, "rgba(165,185,212,0.9)", 4.1); // near ridge, lower and darker
     tex.update(false);
     tex.hasAlpha = true;
 
@@ -480,7 +397,7 @@ export class Environment {
     // lit (not emissive) so the ridges darken naturally with the day/night lights
     mat.diffuseTexture = tex;
     mat.opacityTexture = tex;
-    mat.emissiveColor = new Color3(0.1, 0.08, 0.12);
+    mat.emissiveColor = new Color3(0.14, 0.17, 0.22);
     mat.specularColor = Color3.Black();
     mat.fogEnabled = false;
     plane.material = mat;
@@ -578,65 +495,22 @@ export class Environment {
     }
   }
 
-  // A palm tree, near-silhouette: a thin leaning trunk topped with a fan of
-  // drooping fronds. All parts appended to `parts` for merging into the island.
-  private makePalm(parts: Mesh[], rand: () => number, x: number, z: number, scale: number, tag: string): void {
-    const trunkH = (7 + rand() * 4) * scale;
-    const lean = (rand() - 0.5) * 0.5;
-    const trunk = CreateCylinder(`palmTrunk${tag}`, { height: trunkH, diameterTop: 0.28 * scale, diameterBottom: 0.55 * scale, tessellation: 6 }, this.scene);
-    paint(trunk, "#241c18");
-    trunk.rotation.z = lean;
-    // place so the base sits on the island top, offset by the lean
-    trunk.position.set(x + Math.sin(lean) * trunkH * 0.5, trunkH / 2, z);
-    parts.push(trunk);
-
-    const topX = x + Math.sin(lean) * trunkH;
-    const topY = trunkH * Math.cos(lean);
-    const fronds = 5 + Math.floor(rand() * 3);
-    for (let f = 0; f < fronds; f++) {
-      const ang = (f / fronds) * Math.PI * 2 + rand() * 0.4;
-      const len = (3.2 + rand() * 1.8) * scale;
-      const frond = CreateBox(`palmFrond${tag}_${f}`, { width: len, height: 0.12 * scale, depth: 0.9 * scale }, this.scene);
-      paint(frond, "#1b2a1a");
-      // fan out and droop downward
-      frond.position.set(topX + Math.cos(ang) * len * 0.4, topY - 0.4 * scale, z + Math.sin(ang) * len * 0.4);
-      frond.rotation.y = ang;
-      frond.rotation.z = 0.5 + rand() * 0.3; // droop
-      parts.push(frond);
-    }
-  }
-
-  // Dark jagged rock spires (Ha Long Bay style) with a few palms — reads as a
-  // backlit silhouette against the sunset. Merged into one mesh/draw call.
   private makeIsland(index: number): Mesh {
     const rand = seededRand(101 + index * 37);
     const parts: Mesh[] = [];
-    const base = 20 + rand() * 22;
+    const base = 26 + rand() * 30;
 
-    // low dark rocky base
-    const foot = CreateCylinder(`islandBase${index}`, { height: 2.2, diameterTop: base * 0.8, diameterBottom: base, tessellation: 8 }, this.scene);
-    paint(foot, "#241d2a");
-    parts.push(foot);
+    const sand = CreateCylinder(`islandBase${index}`, { height: 1.4, diameterTop: base * 0.86, diameterBottom: base, tessellation: 9 }, this.scene);
+    paint(sand, "#d8c8a0");
+    parts.push(sand);
 
-    // cluster of tall tilted rock spires of varying height
-    const spires = 3 + Math.floor(rand() * 4);
-    for (let s = 0; s < spires; s++) {
-      const height = 12 + rand() * 22;
-      const girth = base * (0.22 + rand() * 0.28);
-      const rock = CreateCylinder(`islandSpire${index}_${s}`, { height, diameterTop: girth * (0.05 + rand() * 0.2), diameterBottom: girth, tessellation: 6 }, this.scene);
-      const shade = rand() > 0.5 ? "#1c1622" : "#2a2230";
-      paint(rock, shade);
-      const off = base * 0.34;
-      rock.position.set((rand() - 0.5) * off, height / 2 + 1, (rand() - 0.5) * off);
-      rock.rotation.z = (rand() - 0.5) * 0.35; // craggy lean
-      rock.rotation.x = (rand() - 0.5) * 0.25;
-      parts.push(rock);
-    }
-
-    // 1–3 palms clinging to the rock
-    const palms = 1 + Math.floor(rand() * 3);
-    for (let p = 0; p < palms; p++) {
-      this.makePalm(parts, rand, (rand() - 0.5) * base * 0.5, (rand() - 0.5) * base * 0.5, 0.8 + rand() * 0.5, `${index}_${p}`);
+    const peaks = 2 + Math.floor(rand() * 2);
+    for (let p = 0; p < peaks; p++) {
+      const height = 6 + rand() * 12;
+      const cone = CreateCylinder(`islandPeak${index}_${p}`, { height, diameterTop: 0, diameterBottom: base * (0.3 + rand() * 0.3), tessellation: 7 }, this.scene);
+      paint(cone, p === 0 ? "#4f8a52" : rand() > 0.5 ? "#6aa564" : "#8b909a");
+      cone.position.set((rand() - 0.5) * base * 0.4, height / 2, (rand() - 0.5) * base * 0.4);
+      parts.push(cone);
     }
 
     const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
@@ -650,13 +524,12 @@ export class Environment {
     mat.diffuseColor = Color3.White();
     mat.specularColor = Color3.Black();
 
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 5; i++) {
       const island = this.makeIsland(i);
       island.material = mat;
       const side = this.rand() > 0.5 ? 1 : -1;
-      // spread across the mid-to-far distance, some closer to frame the sunset
-      island.position.set(side * (55 + this.rand() * 210), -32, 120 + this.rand() * 560);
-      island.scaling.setAll(0.85 + this.rand() * 0.85);
+      island.position.set(side * (40 + this.rand() * 240), -32, 120 + this.rand() * 580);
+      island.scaling.setAll(0.8 + this.rand() * 0.8);
       this.islands.push(island);
     }
   }
@@ -864,11 +737,6 @@ export class Environment {
           this.vfx.wreckFire(this.flakPos);
         }
       }
-    }
-
-    // gentle shimmer on the sun's water reflection
-    if (this.sunReflect.isEnabled()) {
-      this.sunReflect.scaling.x = 1 + Math.sin(this.time * 2.3) * 0.12;
     }
 
     // sweeping searchlights (visible at night via applyNight) — slow sweep

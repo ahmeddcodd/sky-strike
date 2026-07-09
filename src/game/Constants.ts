@@ -79,9 +79,8 @@ export const COMBO = {
 
 export const NIGHT = {
   EASE: 0.08, // nightFactor units per second toward the target
-  // wave → target: starts at full sunset (0), the sun sinks toward night as
-  // waves climb (day is already a sunset, so no bright-blue phase)
-  TARGETS: [0, 0, 0.2, 0.5, 0.75, 1],
+  // wave → target night factor: waves 1-2 day, 3-4 dusk, 5+ full night
+  TARGETS: [0, 0, 0, 0.45, 0.75, 1],
 } as const;
 
 export const WEAPON = {
