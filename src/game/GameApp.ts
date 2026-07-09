@@ -2,7 +2,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { TargetCamera } from "@babylonjs/core/Cameras/targetCamera";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
-import { CAMERA, DIFFICULTY_CLAMP_DT, NIGHT, PLAYER, WAVE } from "./Constants";
+import { CAMERA, DIFFICULTY_CLAMP_DT, MISSILE, NIGHT, PLAYER, POWERUP, WAVE } from "./Constants";
 import { createEnvironment, type Environment } from "../factories/EnvironmentFactory";
 import { EnemyManager } from "../systems/EnemyManager";
 import { EnemySpawner } from "../systems/EnemySpawner";
@@ -16,10 +16,20 @@ import { HealthSystem } from "../systems/HealthSystem";
 import { ComboSystem } from "../systems/ComboSystem";
 import { SaveSystem } from "../systems/SaveSystem";
 import { DebugSystem } from "../systems/DebugSystem";
+import { EnemyFireSystem } from "../systems/EnemyFireSystem";
+import { MissileSystem } from "../systems/MissileSystem";
+import { PowerUpSystem } from "../systems/PowerUpSystem";
 import type { PlayablesSDK } from "../systems/PlayablesSDK";
 import { PlayerJet } from "../entities/PlayerJet";
 import type { EnemyJet } from "../entities/EnemyJet";
+import type { PowerUpType } from "../entities/PowerUpPod";
 import { HUD, type HpBarInfo } from "../ui/HUD";
+
+const POWERUP_NAMES: Record<PowerUpType, string> = {
+  heavy: "HEAVY BULLETS",
+  missiles: "HOMING MISSILES",
+  ghost: "GHOST MODE",
+};
 
 type GameState = "ready" | "playing" | "gameover";
 
@@ -35,7 +45,11 @@ export class GameApp {
   private enemyManager: EnemyManager;
   private spawner: EnemySpawner;
   private playerJet: PlayerJet;
+  private raycaster: RaycastShootingSystem;
   private weapon: WeaponSystem;
+  private missiles: MissileSystem;
+  private enemyFire: EnemyFireSystem;
+  private powerUps: PowerUpSystem;
   private score = new ScoreSystem();
   private health = new HealthSystem();
   private combo = new ComboSystem();
@@ -76,8 +90,12 @@ export class GameApp {
     this.enemyManager = new EnemyManager(this.scene, this.vfx);
     this.spawner = new EnemySpawner(this.enemyManager, this.camera, this.engine);
     this.playerJet = new PlayerJet(this.scene, this.camera, this.vfx);
-    const raycaster = new RaycastShootingSystem(this.scene, this.camera, this.enemyManager);
-    this.weapon = new WeaponSystem(raycaster, this.vfx, this.audio, this.playerJet);
+    this.missiles = new MissileSystem(this.scene, this.vfx, this.playerJet);
+    this.raycaster = new RaycastShootingSystem(this.scene, this.camera, this.enemyManager, this.missiles);
+    this.weapon = new WeaponSystem(this.raycaster, this.vfx, this.audio, this.playerJet);
+    this.powerUps = new PowerUpSystem(this.scene, this.camera, this.engine, this.playerJet, this.weapon);
+    this.raycaster.setPods(this.powerUps); // late injection: powerUps needs weapon, weapon needs raycaster
+    this.enemyFire = new EnemyFireSystem(this.scene, this.enemyManager, this.playerJet, this.vfx, this.audio, this.missiles);
     this.input = new InputSystem(canvas);
     this.hud = new HUD(document.getElementById("hud")!);
 
@@ -92,6 +110,9 @@ export class GameApp {
         health: this.health,
         combo: this.combo,
         env: this.env,
+        missiles: this.missiles,
+        powerUps: this.powerUps,
+        enemyFire: this.enemyFire,
         hudRoot: document.getElementById("hud")!,
       });
     }
@@ -107,10 +128,61 @@ export class GameApp {
     this.enemyManager.onReached = () => this.onEnemyReached();
     this.combo.onChange = (streak, multiplier) => this.hud.setCombo(streak, multiplier);
 
+    // shooting the special targets
+    this.weapon.onMissileShot = (missile, point) => this.missiles.intercept(missile, point);
+    this.weapon.onPodShot = (pod, point) => this.powerUps.collect(pod, point);
+    this.weapon.fireHomingMissile = (x, y, muzzle) => {
+      const target = this.raycaster.nearestToRay(x, y);
+      if (!target) return false;
+      this.missiles.launchAtEnemy(muzzle, target);
+      return true;
+    };
+
+    // enemy offense → player hull
+    this.enemyFire.onPlayerGunHit = () => this.damagePlayer(PLAYER.GUN_HIT_DAMAGE, false, 0.12);
+    this.missiles.onLaunch = () => {
+      this.hud.warning("MISSILE!");
+      this.audio.missileAlarm();
+    };
+    this.missiles.onPlayerHit = (point) => {
+      this.vfx.explosion(point);
+      this.audio.explosion();
+      this.damagePlayer(PLAYER.MISSILE_HIT_DAMAGE, true, 0.5);
+    };
+    this.missiles.onIntercepted = (_missile, point) => {
+      this.vfx.explosion(point);
+      this.audio.explosion();
+      this.score.addBonus(MISSILE.INTERCEPT_SCORE);
+      this.hud.setScore(this.score.score);
+      const screen = this.project(point);
+      this.hud.popup(screen.x, screen.y, `INTERCEPTED +${MISSILE.INTERCEPT_SCORE}`);
+    };
+    this.missiles.onEnemyHit = (enemy, point) => {
+      if (enemy.takeDamage(MISSILE.PLAYER_DAMAGE, point)) this.onKill(enemy, point);
+      else this.vfx.explosion(point);
+    };
+
+    // power-ups
+    this.powerUps.onPickup = (type, point) => {
+      this.audio.pickup();
+      this.score.addBonus(POWERUP.COLLECT_SCORE);
+      this.hud.setScore(this.score.score);
+      this.hud.warning(POWERUP_NAMES[type], true);
+      const screen = this.project(point);
+      this.hud.popup(screen.x, screen.y, `+${POWERUP.COLLECT_SCORE}`);
+    };
+    this.powerUps.onExpire = () => this.audio.powerExpire();
+    this.powerUps.onGhostChange = (active) => {
+      this.enemyFire.setGhost(active);
+      this.missiles.setGhost(active);
+    };
+
     this.spawner.onWaveStart = (wave) => {
       this.hud.setWave(wave);
       this.hud.warning(`WAVE ${wave}`, true);
       this.audio.waveStart();
+      this.enemyFire.setWave(wave);
+      this.powerUps.onWaveStart(wave);
       // night falls as the waves progress (spec: day → dusk → night)
       const target = NIGHT.TARGETS[Math.min(wave, NIGHT.TARGETS.length - 1)];
       this.env.setNightTarget(target);
@@ -121,6 +193,9 @@ export class GameApp {
       this.hud.setScore(this.score.score);
       this.hud.warning(`WAVE CLEAR  +${bonus}`, true);
       this.audio.waveClear();
+      // breather: patch the hull up a little between waves
+      this.health.heal(PLAYER.WAVE_CLEAR_HEAL);
+      this.hud.setHealth(this.health.fraction);
     };
 
     this.playables.onPause = () => this.setPaused(true);
@@ -144,7 +219,7 @@ export class GameApp {
     this.audio.setMuted(!this.playables.audioEnabled);
     this.input.center();
     this.hud.setTouchMode(this.input.touchMode);
-    this.hud.setHealth(this.health.hp);
+    this.hud.setHealth(this.health.fraction);
     this.hud.showStart(this.save.bestScore);
     void this.save.load().then(() => {
       if (this.state === "ready") this.hud.showStart(this.save.bestScore);
@@ -184,14 +259,19 @@ export class GameApp {
       this.combo.update(dt);
       this.spawner.update(dt);
       this.enemyManager.update(dt, this.env.nightFactor);
+      this.enemyFire.update(dt); // after enemies moved — reads fresh positions
+      this.missiles.update(dt);
+      this.powerUps.update(dt);
       this.weapon.update(dt, this.input.firing, this.input.x, this.input.y);
     }
 
+    this.hud.setPowerUp(this.state === "playing" ? this.powerUps.pillText : null);
     this.updateHpBars();
     this.debug?.update();
   }
 
-  /** Projects a health bar above every active enemy (CSS px, pooled DOM). */
+  /** Projects a health bar above every active enemy (CSS px, pooled DOM),
+   *  plus the player's on-jet hull bar and the power-up pod label. */
   private updateHpBars(): void {
     this.hpBarInfos.length = 0;
     if (this.state === "playing") {
@@ -208,6 +288,25 @@ export class GameApp {
           width: enemy.def.barWidth,
         });
       }
+
+      this.playerJet.getWorldPosition(this.barAnchor);
+      this.barAnchor.y -= 1.2;
+      const jetScreen = this.project(this.barAnchor);
+      this.hud.setPlayerBar(jetScreen.x, jetScreen.y, jetScreen.z >= 0 && jetScreen.z <= 1);
+
+      const pod = this.powerUps.activePod;
+      if (pod) {
+        this.barAnchor.copyFrom(pod.position);
+        this.barAnchor.y -= 1.7;
+        const podScreen = this.project(this.barAnchor);
+        const onScreen = podScreen.z >= 0 && podScreen.z <= 1;
+        this.hud.setPodLabel(podScreen.x, podScreen.y, onScreen ? pod.type.toUpperCase() : null, pod.type);
+      } else {
+        this.hud.setPodLabel(0, 0, null, "");
+      }
+    } else {
+      this.hud.setPlayerBar(0, 0, false);
+      this.hud.setPodLabel(0, 0, null, "");
     }
     this.hud.updateHpBars(this.hpBarInfos);
   }
@@ -218,11 +317,15 @@ export class GameApp {
     this.weapon.reset();
     this.spawner.reset();
     this.combo.reset();
+    this.enemyFire.reset();
+    this.missiles.reset();
+    this.powerUps.reset();
     this.env.snapNight(0); // every run starts at dawn
     this.enemyManager.clearAll(false);
     this.hud.setScore(0);
     this.hud.setWave(0);
-    this.hud.setHealth(this.health.hp);
+    this.hud.setHealth(this.health.fraction);
+    this.hud.setPowerUp(null);
     this.input.center();
     this.audio.unlock();
     this.audio.uiTap();
@@ -241,19 +344,27 @@ export class GameApp {
   }
 
   private onEnemyReached(): void {
-    this.audio.playerDamage();
-    this.vfx.addShake(PLAYER.DAMAGE_SHAKE);
-    this.hud.flashDamage();
     this.hud.warning("WARNING");
-    this.combo.reset(); // taking damage breaks the chain (spec §22)
-    const dead = this.health.damage();
-    this.hud.setHealth(this.health.hp, true);
+    this.damagePlayer(PLAYER.SLIP_PAST_DAMAGE, true, PLAYER.DAMAGE_SHAKE);
+  }
+
+  /** Central hull-damage path. Gun chips don't break the combo; big hits do. */
+  private damagePlayer(amount: number, breakCombo: boolean, shake: number): void {
+    if (this.state !== "playing") return;
+    this.audio.playerDamage();
+    this.vfx.addShake(shake);
+    this.hud.flashDamage();
+    if (breakCombo) this.combo.reset(); // heavy damage breaks the chain (spec §22)
+    const dead = this.health.damage(amount);
+    this.hud.setHealth(this.health.fraction, true);
     if (dead) this.endGame();
   }
 
   private endGame(): void {
     this.state = "gameover";
     this.enemyManager.clearAll(true);
+    this.missiles.clearAll(true);
+    this.powerUps.reset();
     this.hud.setFiring(false);
     this.audio.gameOver();
     const isNewBest = this.save.submitScore(this.score.score);

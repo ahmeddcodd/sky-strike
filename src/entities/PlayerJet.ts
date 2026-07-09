@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { TargetCamera } from "@babylonjs/core/Cameras/targetCamera";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -10,7 +11,7 @@ import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
-import { PLAYER_JET } from "../game/Constants";
+import { PLAYER_JET, POWERUP } from "../game/Constants";
 import { paint } from "../factories/MeshUtils";
 import { getNavMaterials } from "../factories/JetFactory";
 import type { VFXSystem } from "../systems/VFXSystem";
@@ -45,6 +46,8 @@ export class PlayerJet {
   private kickAmount = 0;
   private time = 0;
   private trailTimer = 0;
+  private ghost = 0;
+  private ghostMeshes: AbstractMesh[] = [];
 
   constructor(scene: Scene, camera: TargetCamera, vfx: VFXSystem) {
     this.vfx = vfx;
@@ -78,6 +81,23 @@ export class PlayerJet {
       light.visibility = 0;
       this.navLights.push(light);
     }
+
+    // cached for the ghost power-up (nav lights are world-space, handled separately)
+    this.ghostMeshes = this.root.getChildMeshes();
+  }
+
+  /** World position of the jet (camera-parented root). Written into `out`. */
+  getWorldPosition(out: Vector3): Vector3 {
+    this.root.computeWorldMatrix(true);
+    out.copyFrom(this.root.getAbsolutePosition());
+    return out;
+  }
+
+  /** Ghost power-up translucency: 0 = solid, 1 = fully ghosted. */
+  setGhost(fraction: number): void {
+    this.ghost = fraction;
+    const vis = 1 - POWERUP.GHOST_ALPHA_DROP * fraction;
+    for (const mesh of this.ghostMeshes) mesh.visibility = vis;
   }
 
   private node(scene: Scene, name: string, x: number, y: number, z: number): TransformNode {
@@ -247,9 +267,9 @@ export class PlayerJet {
   update(dt: number, ndcX: number, ndcY: number, nightFactor: number): void {
     this.time += dt;
 
-    // navigation lights glow as night falls; tail strobe blinks. synced at the
-    // END of update (after bank/drift below) via syncNavLights().
-    const navVis = 0.1 + 0.9 * nightFactor;
+    // navigation lights glow as night falls; tail strobe blinks; ghost mode
+    // dims them. synced at the END of update (after bank/drift below).
+    const navVis = (0.1 + 0.9 * nightFactor) * (1 - 0.85 * this.ghost);
     this.navLights[0].visibility = navVis;
     this.navLights[1].visibility = navVis;
     this.navLights[2].visibility = navVis * (Math.sin(this.time * 6.5) > 0.55 ? 1 : 0.08);

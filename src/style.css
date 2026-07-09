@@ -51,29 +51,23 @@ body.mouse-mode #game {
   align-items: flex-start;
 }
 
-.hearts {
-  display: flex;
-  gap: 5px;
+.player-hp {
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
 }
 
-.heart {
-  width: 26px;
-  height: 26px;
-  transition: transform 0.15s, opacity 0.2s;
+.player-hp-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  opacity: 0.75;
+  margin-bottom: 4px;
 }
 
-.heart.lost {
-  opacity: 0.22;
-  transform: scale(0.82);
-  filter: grayscale(1);
+.player-hp.shake {
+  animation: hudShake 0.4s;
 }
 
-.hearts.shake {
-  animation: heartShake 0.4s;
-}
-
-@keyframes heartShake {
+@keyframes hudShake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-5px); }
   40% { transform: translateX(5px); }
@@ -162,6 +156,73 @@ body.mouse-mode #game {
 .hpfill.low {
   background: #ff5b4d;
 }
+
+/* fixed top-left hull readout — anchored, not projected */
+.hpbar.fixed {
+  position: static;
+  transform: none;
+  width: 112px;
+  height: 9px;
+  border-radius: 5px;
+}
+
+/* the player's own on-jet bar */
+.hpbar.player {
+  width: 70px;
+  height: 6px;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* ---------- Power-ups ---------- */
+
+.powerup-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 24%;
+  transform: translateX(-50%);
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 2px;
+  color: #ffd75e;
+  background: rgba(8, 14, 24, 0.6);
+  border: 1px solid rgba(255, 215, 94, 0.75);
+  border-radius: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.powerup-pill.show {
+  opacity: 1;
+}
+
+.powerup-pill.pop {
+  animation: scorePop 0.25s;
+}
+
+.pod-label {
+  position: absolute;
+  transform: translate(-50%, 0);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.pod-label.show {
+  opacity: 0.95;
+}
+
+.pod-label.heavy { color: #ff9a3d; }
+.pod-label.missiles { color: #35c8e8; }
+.pod-label.ghost { color: #b06aff; }
 
 /* ---------- Crosshair ---------- */
 

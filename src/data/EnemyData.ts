@@ -15,6 +15,12 @@ export interface EnemyTypeDef {
   hitboxScale: number;
   /** on-screen health bar width in px */
   barWidth: number;
+  /** fires gun bursts at the player (from ENEMY_FIRE.UNLOCK_WAVE) */
+  fires: boolean;
+  /** seconds between burst attempts while in the firing window */
+  burstInterval: number;
+  /** launches one interceptable missile per approach (armored) */
+  firesMissiles: boolean;
 }
 
 export const ENEMY_TYPES: Record<EnemyTypeId, EnemyTypeDef> = {
@@ -28,6 +34,9 @@ export const ENEMY_TYPES: Record<EnemyTypeId, EnemyTypeDef> = {
     weaveFreq: 0,
     hitboxScale: 1,
     barWidth: 34,
+    fires: true,
+    burstInterval: 3.4,
+    firesMissiles: false,
   },
   fast: {
     id: "fast",
@@ -39,6 +48,9 @@ export const ENEMY_TYPES: Record<EnemyTypeId, EnemyTypeDef> = {
     weaveFreq: 2.6,
     hitboxScale: 0.95,
     barWidth: 30,
+    fires: false, // speed is its threat — firing while weaving would be unreadable
+    burstInterval: 0,
+    firesMissiles: false,
   },
   armored: {
     id: "armored",
@@ -50,6 +62,9 @@ export const ENEMY_TYPES: Record<EnemyTypeId, EnemyTypeDef> = {
     weaveFreq: 0,
     hitboxScale: 1.3,
     barWidth: 46,
+    fires: false, // the missile is its threat — guns on top would double-punish
+    burstInterval: 0,
+    firesMissiles: true,
   },
 };
 

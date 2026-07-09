@@ -23,6 +23,12 @@ export class EnemyJet {
   def: EnemyTypeDef;
   active = false;
   health: number;
+  /** Bumped every spawn — lets deferred effects (bursts, missiles) detect pool recycling. */
+  spawnId = 0;
+  /** Counts down to this jet's next gun burst (managed by EnemyFireSystem). */
+  fireTimer = 0;
+  /** Armored jets launch one missile per approach. */
+  hasFiredMissile = false;
 
   private mat: StandardMaterial;
   private vfx: VFXSystem;
@@ -115,7 +121,11 @@ export class EnemyJet {
     this.progress = 0;
     this.health = this.def.health;
     this.age = 0;
-    this.weavePhase = Math.random() * Math.PI * 2; // spawn-time randomness only (spec §16)
+    this.spawnId++;
+    this.hasFiredMissile = false;
+    // spawn-time randomness only (spec §16) — staggers first bursts across the wave
+    this.fireTimer = this.def.burstInterval * (0.7 + 0.6 * Math.random());
+    this.weavePhase = Math.random() * Math.PI * 2;
     this.bank = 0;
     this.flashTimer = 0;
     this.trailTimer = 0;
@@ -210,6 +220,12 @@ export class EnemyJet {
     }
 
     return this.root.position.z <= WORLD.DANGER_Z;
+  }
+
+  /** World position of the nose gun (mirror of tailPosition). Written into `out`. */
+  nosePosition(out: Vector3): Vector3 {
+    out.copyFrom(this.dir).scaleInPlace(2.3).addInPlace(this.root.position);
+    return out;
   }
 
   private tailPosition(out: Vector3): void {

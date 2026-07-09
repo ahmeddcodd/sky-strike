@@ -7,16 +7,20 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { CreateLines } from "@babylonjs/core/Meshes/Builders/linesBuilder";
-import { WORLD } from "../game/Constants";
+import { PLAYER, WORLD } from "../game/Constants";
 import type { EnemyManager } from "./EnemyManager";
 import type { EnemySpawner } from "./EnemySpawner";
 import type { WeaponSystem } from "./WeaponSystem";
 import type { HealthSystem } from "./HealthSystem";
 import type { ComboSystem } from "./ComboSystem";
+import type { MissileSystem } from "./MissileSystem";
+import type { PowerUpSystem } from "./PowerUpSystem";
+import type { EnemyFireSystem } from "./EnemyFireSystem";
 import type { Environment } from "../factories/EnvironmentFactory";
 
 // Tuning tools (spec §45). Only constructed in dev builds or with ?debug=1.
-// Hotkeys: ` visuals · J spawn jet · C clear · I invincible · W skip wave · N night toggle.
+// Hotkeys: ` visuals · J spawn jet · C clear · I invincible · W skip wave
+//          N night toggle · P spawn power-up pod · M force an enemy missile.
 
 interface DebugDeps {
   manager: EnemyManager;
@@ -25,6 +29,9 @@ interface DebugDeps {
   health: HealthSystem;
   combo: ComboSystem;
   env: Environment;
+  missiles: MissileSystem;
+  powerUps: PowerUpSystem;
+  enemyFire: EnemyFireSystem;
   hudRoot: HTMLElement;
 }
 
@@ -97,6 +104,13 @@ export class DebugSystem {
         case "KeyN":
           deps.env.snapNight(deps.env.nightFactor > 0.5 ? 0 : 1);
           break;
+        case "KeyP":
+          deps.powerUps.debugSpawn();
+          break;
+        case "KeyM":
+          deps.enemyFire.debugForceMissile = true;
+          deps.spawner.spawnOne("armored");
+          break;
       }
     });
   }
@@ -122,8 +136,11 @@ export class DebugSystem {
       `enemies    ${this.deps.manager.activeCount}\n` +
       `shots/hits ${this.deps.weapon.shots}/${this.deps.weapon.hits}\n` +
       `combo      ${this.deps.combo.streak} (×${this.deps.combo.multiplier})\n` +
+      `hp         ${this.deps.health.hp}/${PLAYER.MAX_HEALTH}\n` +
+      `missiles   ${this.deps.missiles.hostileCount}\n` +
+      `power      ${this.deps.powerUps.pillText ?? "-"}\n` +
       `night      ${this.deps.env.nightFactor.toFixed(2)}\n` +
       `invincible ${this.deps.health.invincible ? "ON" : "off"}\n` +
-      `keys: \` boxes · J spawn · C clear · I invinc · W wave · N night`;
+      `keys: \` boxes · J spawn · C clear · I invinc · W wave · N night · P pod · M missile`;
   }
 }

@@ -1,4 +1,4 @@
-import { PLAYER, VFX } from "../game/Constants";
+import { VFX } from "../game/Constants";
 
 // DOM/CSS HUD overlay (deliberate deviation from spec §39's Babylon GUI:
 // sharper text on high-DPI mobile, no fullscreen GUI texture, smaller bundle).
@@ -18,8 +18,6 @@ export interface HpBarInfo {
   fraction: number; // 0..1
   width: number; // px
 }
-
-const HEART_SVG = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#ff5b6e" stroke="rgba(255,255,255,0.85)" stroke-width="1.4"/></svg>`;
 
 const CROSSHAIR_SVG = `<svg viewBox="0 0 56 56">
   <circle cx="28" cy="28" r="21" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2.4"/>
@@ -45,8 +43,14 @@ export class HUD {
 
   private crosshairEl: HTMLDivElement;
   private scoreEl: HTMLDivElement;
-  private hearts: HTMLDivElement;
-  private heartItems: HTMLDivElement[] = [];
+  private playerHp: HTMLDivElement;
+  private playerHpFill: HTMLDivElement;
+  private playerBar: HTMLDivElement;
+  private playerBarFill: HTMLDivElement;
+  private powerPill: HTMLDivElement;
+  private lastPillText: string | null = null;
+  private podLabel: HTMLDivElement;
+  private lastPodText: string | null = null;
   private vignetteEl: HTMLDivElement;
   private warningEl: HTMLDivElement;
   private startOverlay: HTMLDivElement;
@@ -68,14 +72,12 @@ export class HUD {
       return node;
     };
 
-    // top bar: hearts + score
+    // top bar: hull bar + score
     const top = el("div", "hud-top", root);
-    this.hearts = el("div", "hearts", top);
-    for (let i = 0; i < PLAYER.MAX_HEALTH; i++) {
-      const heart = el("div", "heart", this.hearts);
-      heart.innerHTML = HEART_SVG;
-      this.heartItems.push(heart);
-    }
+    this.playerHp = el("div", "player-hp", top);
+    el("div", "player-hp-label", this.playerHp).textContent = "HULL";
+    const hpTrack = el("div", "hpbar fixed", this.playerHp);
+    this.playerHpFill = el("div", "hpfill", hpTrack);
     this.waveEl = el("div", "wave-indicator", top);
     this.waveEl.textContent = "";
 
@@ -99,6 +101,15 @@ export class HUD {
       bar.style.display = "none";
       this.hpBars.push({ root: bar, fill });
     }
+
+    // player's own on-jet bar (projected under the player jet)
+    this.playerBar = el("div", "hpbar player", root);
+    this.playerBarFill = el("div", "hpfill", this.playerBar);
+    this.playerBar.style.display = "none";
+
+    // active power-up pill + floating pod label (one of each is ever visible)
+    this.powerPill = el("div", "powerup-pill", root);
+    this.podLabel = el("div", "pod-label", root);
 
     for (let i = 0; i < VFX.POPUP_POOL; i++) {
       const popup = el("div", "popup", root);
@@ -168,13 +179,62 @@ export class HUD {
     this.scoreEl.classList.add("pop");
   }
 
-  setHealth(hp: number, shake = false): void {
-    this.heartItems.forEach((heart, i) => heart.classList.toggle("lost", i >= hp));
+  /** Both hull bars (top-left readout + on-jet) share this fraction. */
+  setHealth(fraction: number, shake = false): void {
+    const pct = `${(fraction * 100).toFixed(1)}%`;
+    const tier = fraction > 0.55 ? "hpfill" : fraction > 0.28 ? "hpfill mid" : "hpfill low";
+    this.playerHpFill.style.width = pct;
+    this.playerHpFill.className = tier;
+    this.playerBarFill.style.width = pct;
+    this.playerBarFill.className = tier;
     if (shake) {
-      this.hearts.classList.remove("shake");
-      void this.hearts.offsetWidth;
-      this.hearts.classList.add("shake");
+      this.playerHp.classList.remove("shake");
+      void this.playerHp.offsetWidth;
+      this.playerHp.classList.add("shake");
     }
+  }
+
+  /** Positions the on-jet hull bar (CSS px). */
+  setPlayerBar(x: number, y: number, visible: boolean): void {
+    if (!visible) {
+      this.playerBar.style.display = "none";
+      return;
+    }
+    this.playerBar.style.display = "block";
+    this.playerBar.style.left = `${x}px`;
+    this.playerBar.style.top = `${y}px`;
+  }
+
+  /** Active power-up readout, e.g. "HEAVY 7s". Null hides it. */
+  setPowerUp(text: string | null): void {
+    if (text === this.lastPillText) return;
+    const appeared = !this.lastPillText && !!text;
+    this.lastPillText = text;
+    this.powerPill.textContent = text ?? "";
+    this.powerPill.classList.toggle("show", !!text);
+    if (appeared) {
+      this.powerPill.classList.remove("pop");
+      void this.powerPill.offsetWidth;
+      this.powerPill.classList.add("pop");
+    }
+  }
+
+  /** Label floating under the drifting power-up pod. Null text hides it. */
+  setPodLabel(x: number, y: number, text: string | null, type: string): void {
+    if (!text) {
+      if (this.lastPodText !== null) {
+        this.lastPodText = null;
+        this.podLabel.classList.remove("show");
+      }
+      return;
+    }
+    if (text !== this.lastPodText) {
+      this.lastPodText = text;
+      this.podLabel.textContent = text;
+      this.podLabel.className = `pod-label show ${type}`;
+    }
+    this.podLabel.style.left = `${x}px`;
+    this.podLabel.style.top = `${y}px`;
   }
 
   flashDamage(): void {

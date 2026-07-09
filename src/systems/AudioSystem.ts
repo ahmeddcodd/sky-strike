@@ -126,6 +126,61 @@ export class AudioSystem {
     }
   }
 
+  /** Distant enemy gunfire crack — quieter than the player's guns. */
+  enemyFire(): void {
+    this.noise(0.08, "bandpass", 900 + Math.random() * 300, 0.12, 380);
+  }
+
+  /** Heavy-bullets / missile-launch variant of shoot(): lower and punchier. */
+  shootHeavy(): void {
+    this.noise(0.11, "bandpass", 800 + Math.random() * 300, 0.5, 260);
+    this.tone("square", 150 + Math.random() * 30, 0.07, 0.1, 70);
+  }
+
+  /** Urgent two-tone missile warning, repeated three times. */
+  missileAlarm(): void {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      [880, 620].forEach((freq, j) => {
+        const start = t + i * 0.28 + j * 0.13;
+        const osc = this.ctx!.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, start);
+        const g = this.ctx!.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.setValueAtTime(0.11, start);
+        g.gain.exponentialRampToValueAtTime(0.001, start + 0.12);
+        osc.connect(g).connect(this.master!);
+        osc.start(start);
+        osc.stop(start + 0.15);
+      });
+    }
+  }
+
+  /** Bright ascending pickup arpeggio — distinct from waveClear's triad. */
+  pickup(): void {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    [659, 831, 988, 1319].forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(freq, t + i * 0.06);
+      const g = this.ctx!.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.setValueAtTime(0.1, t + i * 0.06);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.22);
+      osc.connect(g).connect(this.master!);
+      osc.start(t + i * 0.06);
+      osc.stop(t + i * 0.06 + 0.26);
+    });
+  }
+
+  /** Power-up wore off. */
+  powerExpire(): void {
+    this.tone("triangle", 700, 0.2, 0.14, 300);
+  }
+
   waveClear(): void {
     // quick ascending triad chime
     if (!this.ctx || !this.master) return;

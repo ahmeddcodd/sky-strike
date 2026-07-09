@@ -43,6 +43,8 @@ export class VFXSystem {
   private trailPS!: ParticleSystem;
   private wingTrailPS!: ParticleSystem;
   private tracers: Tracer[] = [];
+  private tracerMat!: StandardMaterial;
+  private tracerHeavyMat!: StandardMaterial;
   private flashes: FlashSphere[] = [];
   private muzzles: MuzzleFlash[] = [];
   private shakeIntensity = 0;
@@ -149,6 +151,16 @@ export class VFXSystem {
     mat.specularColor = Color3.Black();
     mat.disableLighting = true;
     mat.fogEnabled = false;
+    this.tracerMat = mat;
+
+    // heavy-bullets power-up: thicker orange rounds
+    const heavy = new StandardMaterial("tracerHeavyMat", this.scene);
+    heavy.emissiveColor = new Color3(1, 0.62, 0.2);
+    heavy.diffuseColor = Color3.Black();
+    heavy.specularColor = Color3.Black();
+    heavy.disableLighting = true;
+    heavy.fogEnabled = false;
+    this.tracerHeavyMat = heavy;
 
     for (let i = 0; i < VFX.TRACER_POOL; i++) {
       const mesh = CreateCylinder(`tracer${i}`, { height: 1, diameter: 0.07, tessellation: 5 }, this.scene);
@@ -258,13 +270,17 @@ export class VFXSystem {
     this.smokePS.manualEmitCount += 1;
   }
 
-  tracer(from: Vector3, to: Vector3): void {
+  tracer(from: Vector3, to: Vector3, heavy = false): void {
     for (const tracer of this.tracers) {
       if (tracer.active) continue;
       tracer.active = true;
       tracer.t = 0;
       tracer.from.copyFrom(from);
       tracer.to.copyFrom(to);
+      tracer.mesh.material = heavy ? this.tracerHeavyMat : this.tracerMat;
+      const girth = heavy ? 1.8 : 1;
+      tracer.mesh.scaling.x = girth;
+      tracer.mesh.scaling.y = girth;
       tracer.mesh.setEnabled(true);
       tracer.mesh.position.copyFrom(from);
       tracer.mesh.lookAt(to);

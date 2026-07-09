@@ -93,8 +93,85 @@ export const WEAPON = {
 } as const;
 
 export const PLAYER = {
-  MAX_HEALTH: 3,
+  MAX_HEALTH: 100,
   DAMAGE_SHAKE: 0.3,
+  GUN_HIT_DAMAGE: 4, // chip damage per landed enemy burst
+  MISSILE_HIT_DAMAGE: 35, // armored-jet missile that gets through
+  SLIP_PAST_DAMAGE: 15, // enemy crossing the danger plane
+  WAVE_CLEAR_HEAL: 12,
+} as const;
+
+// Enemy return fire: bursts of red tracers with a muzzle-flash telegraph.
+// Whether a burst hits is decided once at burst time; the hit only lands when
+// the tracer arrives, and dies with the shooter (killing them mid-burst saves you).
+export const ENEMY_FIRE = {
+  UNLOCK_WAVE: 2, // wave 1 stays the friendly intro
+  Z_MIN: 30,
+  Z_MAX: 85, // firing window — close enough to read, far enough to react
+  BURST_TRACERS: 4,
+  TRACER_SPACING: 0.09, // s between tracers within a burst
+  TRACER_SPEED: 130, // world units/s toward the player
+  TRACER_TIME_MIN: 0.3,
+  TRACER_TIME_MAX: 0.6,
+  HIT_CHANCE: 0.45, // rolled once per burst
+  // global fairness limiter: after a burst lands, no burst may hit again until
+  // this cooldown expires (misses still fire for pressure without damage)
+  HIT_COOLDOWN_BASE: 3.0,
+  HIT_COOLDOWN_PER_WAVE: 0.2,
+  HIT_COOLDOWN_MIN: 1.2,
+  MAX_BURSTS_EARLY: 1, // concurrent bursts before LATE_WAVE
+  MAX_BURSTS_LATE: 2,
+  LATE_WAVE: 4,
+  MISS_OFFSET: 4, // world units miss-tracers pass beside the player
+  TRACER_POOL: 12,
+} as const;
+
+export const MISSILE = {
+  ENEMY_POOL: 3,
+  PLAYER_POOL: 6,
+  ENEMY_SPEED: 19, // ~3.5s flight from the launch window — the interception game
+  ENEMY_TURN_RATE: 1.1, // rad/s of homing correction
+  LAUNCH_Z_MIN: 55,
+  LAUNCH_Z_MAX: 78,
+  MAX_ACTIVE_EARLY: 1, // hostile missiles in flight before LATE_WAVE
+  MAX_ACTIVE_LATE: 2,
+  LATE_WAVE: 6,
+  LAUNCH_COOLDOWN: 6, // s between hostile launches
+  PROXIMITY: 1.6, // impact distance to the player jet
+  LIFETIME: 6,
+  INTERCEPT_SCORE: 150,
+  WOBBLE_AMP: 0.35, // deterministic sine weave (phase fixed at launch)
+  WOBBLE_FREQ: 3,
+  HITBOX: 2.4, // oversized shootable box
+  SMOKE_CADENCE: 0.05,
+  PLAYER_SPEED: 60,
+  PLAYER_TURN_RATE: 3.5,
+  PLAYER_DAMAGE: 5, // one-shots normal/fast, dents armored
+  PLAYER_FIRE_INTERVAL: 0.35,
+} as const;
+
+export const POWERUP = {
+  UNLOCK_WAVE: 2,
+  SPAWN_DELAY_MIN: 4, // s after wave start
+  SPAWN_DELAY_MAX: 7,
+  DRIFT_SPEED: 9, // ~10-12s on screen — a generous shooting window
+  HITBOX: 2.6,
+  COLLECT_SCORE: 50,
+  HEAVY_DURATION: 10,
+  HEAVY_MULT: 2,
+  GHOST_DURATION: 8,
+  GHOST_ALPHA_DROP: 0.65, // jet visibility = 1 - drop * ghost
+  MISSILE_AMMO: 6,
+  POOL: 2,
+} as const;
+
+export const STARS = {
+  COUNT: 220,
+  FADE_START: 0.5, // nightFactor where stars begin to appear
+  // the texture wraps the whole star dome, so width drives on-screen star size
+  // (512 wide ≈ 11px/texel on a phone screen — reads as blobs, not stars)
+  TEX_W: 1024,
+  TEX_H: 512,
 } as const;
 
 export const VFX = {

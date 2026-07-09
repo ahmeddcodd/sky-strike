@@ -13,7 +13,7 @@ import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
-import { NIGHT, WORLD } from "../game/Constants";
+import { NIGHT, STARS, WORLD } from "../game/Constants";
 import { paint, seededRand, makeFlareTexture, lerpColor } from "./MeshUtils";
 import type { VFXSystem } from "../systems/VFXSystem";
 
@@ -71,6 +71,7 @@ export class Environment {
   private hemi!: HemisphericLight;
   private sun!: DirectionalLight;
   private skyTex!: DynamicTexture;
+  private starDome!: Mesh;
   private oceanTex!: DynamicTexture;
   private oceanMat!: StandardMaterial;
   private sunPlane!: Mesh;
@@ -95,6 +96,7 @@ export class Environment {
 
     this.createLights();
     this.createSkyDome();
+    this.createStars();
     this.createSunAndMoon();
     this.createOcean();
     this.createMountains();
@@ -133,19 +135,6 @@ export class Environment {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 8, 512);
 
-    // stars fade in past dusk (canvas y=0 is the zenith)
-    if (n > 0.5) {
-      const brightness = (n - 0.5) * 2;
-      const starRand = seededRand(4242);
-      for (let i = 0; i < 110; i++) {
-        const x = starRand() * 8;
-        const y = starRand() * 340;
-        const a = (0.25 + starRand() * 0.75) * brightness;
-        ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
-        ctx.fillRect(x, y, starRand() > 0.85 ? 2 : 1, 1);
-      }
-    }
-
     // faint noise dithers the gradient — kills banding on mobile screens
     const rand = seededRand(29);
     for (let y = 0; y < 512; y += 2) {
@@ -178,6 +167,9 @@ export class Environment {
 
     this.sunPlane.visibility = Math.max(0, 1 - n * 1.6);
     this.moonPlane.visibility = Math.max(0, (n - 0.35) / 0.65);
+    const starVis = Math.max(0, (n - STARS.FADE_START) / (1 - STARS.FADE_START));
+    this.starDome.visibility = starVis;
+    this.starDome.setEnabled(starVis > 0); // zero cost by day
 
     for (const light of this.searchlights) light.beam.visibility = 0.85 * Math.max(0, (n - 0.45) / 0.55);
     for (const piece of this.setPieces) {
@@ -207,6 +199,45 @@ export class Environment {
     dome.infiniteDistance = true;
     dome.isPickable = false;
     dome.freezeWorldMatrix();
+  }
+
+  // Stars live on their own dome: the gradient texture is only 8px wide, so any
+  // star pixel drawn there smears into a full white ring around the sky.
+  private createStars(): void {
+    const tex = new DynamicTexture("starTex", { width: STARS.TEX_W, height: STARS.TEX_H }, this.scene, false);
+    const ctx = tex.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, STARS.TEX_W, STARS.TEX_H);
+    const rand = seededRand(4242);
+    for (let i = 0; i < STARS.COUNT; i++) {
+      const x = rand() * STARS.TEX_W;
+      const y = rand() * STARS.TEX_H * 0.55; // upper sky only (canvas y=0 is the zenith)
+      const big = rand() > 0.88;
+      const r = big ? 1.1 + rand() * 0.6 : 0.55 + rand() * 0.5;
+      const a = 0.3 + rand() * 0.7;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
+      grad.addColorStop(0, `rgba(255,255,255,${a.toFixed(2)})`);
+      grad.addColorStop(0.45, `rgba(225,235,255,${(a * 0.3).toFixed(2)})`);
+      grad.addColorStop(1, "rgba(225,235,255,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - r * 2, y - r * 2, r * 4, r * 4);
+    }
+    tex.update(false);
+    tex.hasAlpha = true;
+
+    const dome = CreateSphere("stars", { diameter: 990, segments: 12, sideOrientation: Mesh.BACKSIDE }, this.scene);
+    const mat = new StandardMaterial("starMat", this.scene);
+    mat.emissiveTexture = tex;
+    mat.opacityTexture = tex;
+    mat.diffuseColor = Color3.Black();
+    mat.specularColor = Color3.Black();
+    mat.disableLighting = true;
+    mat.fogEnabled = false;
+    mat.alphaMode = 1; // additive
+    dome.material = mat;
+    dome.infiniteDistance = true;
+    dome.isPickable = false;
+    dome.freezeWorldMatrix();
+    this.starDome = dome;
   }
 
   private createSunAndMoon(): void {
