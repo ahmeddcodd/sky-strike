@@ -2,7 +2,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { TargetCamera } from "@babylonjs/core/Cameras/targetCamera";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
-import { CAMERA, DIFFICULTY_CLAMP_DT, PLAYER } from "./Constants";
+import { CAMERA, DIFFICULTY_CLAMP_DT, NIGHT, PLAYER, WAVE } from "./Constants";
 import { createEnvironment, type Environment } from "../factories/EnvironmentFactory";
 import { EnemyManager } from "../systems/EnemyManager";
 import { EnemySpawner } from "../systems/EnemySpawner";
@@ -13,12 +13,13 @@ import { AudioSystem } from "../systems/AudioSystem";
 import { InputSystem } from "../systems/InputSystem";
 import { ScoreSystem } from "../systems/ScoreSystem";
 import { HealthSystem } from "../systems/HealthSystem";
+import { ComboSystem } from "../systems/ComboSystem";
 import { SaveSystem } from "../systems/SaveSystem";
 import { DebugSystem } from "../systems/DebugSystem";
 import type { PlayablesSDK } from "../systems/PlayablesSDK";
 import { PlayerJet } from "../entities/PlayerJet";
 import type { EnemyJet } from "../entities/EnemyJet";
-import { HUD } from "../ui/HUD";
+import { HUD, type HpBarInfo } from "../ui/HUD";
 
 type GameState = "ready" | "playing" | "gameover";
 
@@ -37,6 +38,7 @@ export class GameApp {
   private weapon: WeaponSystem;
   private score = new ScoreSystem();
   private health = new HealthSystem();
+  private combo = new ComboSystem();
   private save: SaveSystem;
   private playables: PlayablesSDK;
   private debug: DebugSystem | null = null;
@@ -46,6 +48,8 @@ export class GameApp {
   private firstFrameDone = false;
   private baseCamPos = new Vector3(0, CAMERA.POSITION_Y, 0);
   private shakeTmp = new Vector3();
+  private barAnchor = new Vector3();
+  private hpBarInfos: HpBarInfo[] = [];
 
   constructor(canvas: HTMLCanvasElement, playables: PlayablesSDK) {
     this.playables = playables;
@@ -66,8 +70,8 @@ export class GameApp {
     this.camera.minZ = 0.3;
     this.camera.maxZ = 1500;
 
-    this.env = createEnvironment(this.scene);
     this.vfx = new VFXSystem(this.scene);
+    this.env = createEnvironment(this.scene, this.vfx);
     this.save = new SaveSystem(playables);
     this.enemyManager = new EnemyManager(this.scene, this.vfx);
     this.spawner = new EnemySpawner(this.enemyManager, this.camera, this.engine);
@@ -86,6 +90,8 @@ export class GameApp {
         spawner: this.spawner,
         weapon: this.weapon,
         health: this.health,
+        combo: this.combo,
+        env: this.env,
         hudRoot: document.getElementById("hud")!,
       });
     }
@@ -99,6 +105,23 @@ export class GameApp {
     this.weapon.onKill = (enemy, point) => this.onKill(enemy, point);
     this.weapon.onHitMarker = () => this.hud.hitMarker();
     this.enemyManager.onReached = () => this.onEnemyReached();
+    this.combo.onChange = (streak, multiplier) => this.hud.setCombo(streak, multiplier);
+
+    this.spawner.onWaveStart = (wave) => {
+      this.hud.setWave(wave);
+      this.hud.warning(`WAVE ${wave}`, true);
+      this.audio.waveStart();
+      // night falls as the waves progress (spec: day → dusk → night)
+      const target = NIGHT.TARGETS[Math.min(wave, NIGHT.TARGETS.length - 1)];
+      this.env.setNightTarget(target);
+    };
+    this.spawner.onWaveClear = (wave) => {
+      const bonus = WAVE.CLEAR_BONUS_BASE + WAVE.CLEAR_BONUS_PER_WAVE * wave;
+      this.score.addBonus(bonus);
+      this.hud.setScore(this.score.score);
+      this.hud.warning(`WAVE CLEAR  +${bonus}`, true);
+      this.audio.waveClear();
+    };
 
     this.playables.onPause = () => this.setPaused(true);
     this.playables.onResume = () => this.setPaused(false);
@@ -155,15 +178,38 @@ export class GameApp {
     // CSS-pixel based so it's independent of the render buffer's DPR scaling.
     const ndcX = (this.input.x / Math.max(1, window.innerWidth)) * 2 - 1;
     const ndcY = (this.input.y / Math.max(1, window.innerHeight)) * 2 - 1;
-    this.playerJet.update(dt, ndcX, ndcY);
+    this.playerJet.update(dt, ndcX, ndcY, this.env.nightFactor);
 
     if (this.state === "playing") {
+      this.combo.update(dt);
       this.spawner.update(dt);
-      this.enemyManager.update(dt);
+      this.enemyManager.update(dt, this.env.nightFactor);
       this.weapon.update(dt, this.input.firing, this.input.x, this.input.y);
     }
 
+    this.updateHpBars();
     this.debug?.update();
+  }
+
+  /** Projects a health bar above every active enemy (CSS px, pooled DOM). */
+  private updateHpBars(): void {
+    this.hpBarInfos.length = 0;
+    if (this.state === "playing") {
+      for (const enemy of this.enemyManager.enemies) {
+        if (!enemy.active) continue;
+        this.barAnchor.copyFrom(enemy.root.position);
+        this.barAnchor.y += 2.4 * enemy.def.hitboxScale;
+        const screen = this.project(this.barAnchor);
+        if (screen.z < 0 || screen.z > 1) continue; // behind the camera
+        this.hpBarInfos.push({
+          x: screen.x,
+          y: screen.y,
+          fraction: enemy.healthFraction,
+          width: enemy.def.barWidth,
+        });
+      }
+    }
+    this.hud.updateHpBars(this.hpBarInfos);
   }
 
   private startGame(): void {
@@ -171,8 +217,11 @@ export class GameApp {
     this.health.reset();
     this.weapon.reset();
     this.spawner.reset();
+    this.combo.reset();
+    this.env.snapNight(0); // every run starts at dawn
     this.enemyManager.clearAll(false);
     this.hud.setScore(0);
+    this.hud.setWave(0);
     this.hud.setHealth(this.health.hp);
     this.input.center();
     this.audio.unlock();
@@ -183,10 +232,11 @@ export class GameApp {
   private onKill(enemy: EnemyJet, hitPoint: Vector3): void {
     this.vfx.explosion(enemy.root.position);
     this.audio.explosion();
-    const gained = this.score.addKill();
+    const multiplier = this.combo.kill();
+    const gained = this.score.addKill(enemy.def.score, multiplier);
     this.hud.setScore(this.score.score);
     const screen = this.project(hitPoint);
-    this.hud.popup(screen.x, screen.y, `+${gained}`);
+    this.hud.popup(screen.x, screen.y, multiplier > 1 ? `+${gained} ×${multiplier}` : `+${gained}`);
     enemy.deactivate();
   }
 
@@ -195,6 +245,7 @@ export class GameApp {
     this.vfx.addShake(PLAYER.DAMAGE_SHAKE);
     this.hud.flashDamage();
     this.hud.warning("WARNING");
+    this.combo.reset(); // taking damage breaks the chain (spec §22)
     const dead = this.health.damage();
     this.hud.setHealth(this.health.hp, true);
     if (dead) this.endGame();
@@ -210,6 +261,7 @@ export class GameApp {
       score: this.score.score,
       best: this.save.bestScore,
       kills: this.score.kills,
+      wave: this.spawner.wave,
       accuracy: this.weapon.accuracy,
       isNewBest,
     });

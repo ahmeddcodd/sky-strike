@@ -9,6 +9,7 @@ import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { VFX } from "../game/Constants";
+import { makeFlareTexture } from "../factories/MeshUtils";
 
 // Every effect here is pooled or burst-emitted from a persistent shared particle
 // system (manualEmitCount) — nothing is allocated per shot/explosion at runtime.
@@ -49,26 +50,11 @@ export class VFXSystem {
 
   constructor(scene: Scene) {
     this.scene = scene;
-    const flare = this.makeFlareTexture();
+    const flare = makeFlareTexture(scene, "vfxFlareTex");
     this.createParticles(flare);
     this.createTracers();
     this.createFlashSpheres();
     this.createMuzzleFlashes(flare);
-  }
-
-  private makeFlareTexture(): DynamicTexture {
-    const tex = new DynamicTexture("flareTex", { width: 64, height: 64 }, this.scene, false);
-    const ctx = tex.getContext() as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, 64, 64);
-    const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-    grad.addColorStop(0, "rgba(255,255,255,1)");
-    grad.addColorStop(0.35, "rgba(255,255,255,0.6)");
-    grad.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 64, 64);
-    tex.update(false);
-    tex.hasAlpha = true;
-    return tex;
   }
 
   private makeBurstSystem(name: string, capacity: number, tex: DynamicTexture): ParticleSystem {
@@ -242,6 +228,22 @@ export class VFXSystem {
   trailPuff(point: Vector3): void {
     (this.trailPS.emitter as Vector3).copyFrom(point);
     this.trailPS.manualEmitCount += 1;
+  }
+
+  /** Distant anti-air burst — war ambience, deliberately NO camera shake. */
+  flakBurst(point: Vector3): void {
+    (this.firePS.emitter as Vector3).copyFrom(point);
+    this.firePS.manualEmitCount += 7;
+    (this.smokePS.emitter as Vector3).copyFrom(point);
+    this.smokePS.manualEmitCount += 4;
+  }
+
+  /** Flames licking off a burning wreck; called on a cadence while it's in view. */
+  wreckFire(point: Vector3): void {
+    (this.firePS.emitter as Vector3).copyFrom(point);
+    this.firePS.manualEmitCount += 2;
+    (this.smokePS.emitter as Vector3).copyFrom(point);
+    this.smokePS.manualEmitCount += 1;
   }
 
   /** Tiny wingtip streamer puff for the player jet. */

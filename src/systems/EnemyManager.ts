@@ -2,23 +2,33 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { createJetBaseMesh } from "../factories/JetFactory";
 import { EnemyJet } from "../entities/EnemyJet";
+import { ALL_ENEMY_TYPES, ENEMY_TYPES, type EnemyTypeId } from "../data/EnemyData";
 import { makeFlightPath } from "./FlightPathSystem";
-import { ENEMY } from "../game/Constants";
 import type { VFXSystem } from "./VFXSystem";
 
 export class EnemyManager {
+  /** Flat list across all type pools — raycast and debug iterate this. */
   enemies: EnemyJet[] = [];
 
   /** Fired when a jet crosses the danger zone (player takes damage). */
   onReached: (enemy: EnemyJet) => void = () => {};
 
+  private pools = new Map<EnemyTypeId, EnemyJet[]>();
   private vfx: VFXSystem;
 
   constructor(scene: Scene, vfx: VFXSystem) {
     this.vfx = vfx;
-    const base = createJetBaseMesh(scene);
-    for (let i = 0; i < ENEMY.POOL_SIZE; i++) {
-      this.enemies.push(new EnemyJet(i, scene, base, vfx));
+    let index = 0;
+    for (const type of ALL_ENEMY_TYPES) {
+      const def = ENEMY_TYPES[type];
+      const variant = createJetBaseMesh(scene, type);
+      const pool: EnemyJet[] = [];
+      for (let i = 0; i < def.poolSize; i++) {
+        const jet = new EnemyJet(index++, scene, variant, def, vfx);
+        pool.push(jet);
+        this.enemies.push(jet);
+      }
+      this.pools.set(type, pool);
     }
   }
 
@@ -28,9 +38,16 @@ export class EnemyManager {
     return n;
   }
 
-  /** Pulls a jet from the pool and launches it on a path. Returns false when the pool is dry. */
-  spawn(spawnPos: Vector3, endPos: Vector3, lateralCurve: number, verticalCurve: number, speed: number): boolean {
-    for (const enemy of this.enemies) {
+  /** Pulls a jet of the given type from its pool. Returns false when that pool is dry. */
+  spawn(
+    type: EnemyTypeId,
+    spawnPos: Vector3,
+    endPos: Vector3,
+    lateralCurve: number,
+    verticalCurve: number,
+    speed: number,
+  ): boolean {
+    for (const enemy of this.pools.get(type)!) {
       if (enemy.active) continue;
       enemy.spawn(makeFlightPath(spawnPos, endPos, lateralCurve, verticalCurve), speed);
       return true;
@@ -38,11 +55,11 @@ export class EnemyManager {
     return false;
   }
 
-  update(dt: number): void {
+  update(dt: number, nightFactor: number): void {
     for (const enemy of this.enemies) {
       if (!enemy.active) continue;
-      if (enemy.update(dt)) {
-        // reached the danger zone — it detonates against the defense line
+      if (enemy.update(dt, nightFactor)) {
+        // reached the danger zone — it detonates against the player
         this.vfx.explosion(enemy.root.position);
         enemy.deactivate();
         this.onReached(enemy);

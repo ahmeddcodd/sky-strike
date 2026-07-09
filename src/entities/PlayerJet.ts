@@ -9,8 +9,10 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { PLAYER_JET } from "../game/Constants";
 import { paint } from "../factories/MeshUtils";
+import { getNavMaterials } from "../factories/JetFactory";
 import type { VFXSystem } from "../systems/VFXSystem";
 
 // The player's fighter, seen from behind (chase cam). Purely cosmetic: banking,
@@ -31,6 +33,7 @@ export class PlayerJet {
   private tipL: TransformNode;
   private tipR: TransformNode;
   private flames: Mesh[] = [];
+  private navLights: Mesh[] = []; // [red, green, white-strobe]
   private muzzleWorld = new Vector3();
   private tmp = new Vector3();
 
@@ -57,6 +60,21 @@ export class PlayerJet {
     this.muzzleR = this.node(scene, "muzzleR", 1.05, -0.05, 1.0);
     this.tipL = this.node(scene, "tipL", -2.3, -0.05, -0.95);
     this.tipR = this.node(scene, "tipR", 2.3, -0.05, -0.95);
+
+    // navigation lights: red port, green starboard, white tail strobe
+    const nav = getNavMaterials(scene);
+    const anchors: [number, number, number][] = [[-2.3, -0.02, -0.95], [2.3, -0.02, -0.95], [0, 1.05, -2.3]];
+    const mats = [nav.red, nav.green, nav.white];
+    for (let i = 0; i < 3; i++) {
+      const light = CreatePlane(`playerNav${i}`, { size: 0.4 }, scene);
+      light.material = mats[i];
+      light.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      light.parent = this.root;
+      light.position.set(...anchors[i]);
+      light.isPickable = false;
+      light.visibility = 0;
+      this.navLights.push(light);
+    }
   }
 
   private node(scene: Scene, name: string, x: number, y: number, z: number): TransformNode {
@@ -223,8 +241,14 @@ export class PlayerJet {
   }
 
   /** ndcX/ndcY: crosshair position in [-1, 1] (y positive = down, screen convention). */
-  update(dt: number, ndcX: number, ndcY: number): void {
+  update(dt: number, ndcX: number, ndcY: number, nightFactor: number): void {
     this.time += dt;
+
+    // navigation lights glow as night falls; tail strobe blinks
+    const navVis = 0.1 + 0.9 * nightFactor;
+    this.navLights[0].visibility = navVis;
+    this.navLights[1].visibility = navVis;
+    this.navLights[2].visibility = navVis * (Math.sin(this.time * 6.5) > 0.55 ? 1 : 0.08);
     this.kickAmount = Math.max(0, this.kickAmount - PLAYER_JET.KICK_DECAY * this.kickAmount * dt);
 
     // banking toward the crosshair, smoothed

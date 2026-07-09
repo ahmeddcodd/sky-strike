@@ -107,4 +107,40 @@ export class AudioSystem {
     this.tone("sawtooth", 330, 0.55, 0.22, 82);
     this.noise(0.6, "lowpass", 1200, 0.3, 100);
   }
+
+  waveStart(): void {
+    // two-note alert riser
+    this.tone("square", 392, 0.14, 0.14);
+    if (this.ctx && this.master) {
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(523, t + 0.16);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.setValueAtTime(0.14, t + 0.16);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+      osc.connect(g).connect(this.master);
+      osc.start(t + 0.16);
+      osc.stop(t + 0.5);
+    }
+  }
+
+  waveClear(): void {
+    // quick ascending triad chime
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    [523, 659, 784].forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, t + i * 0.09);
+      const g = this.ctx!.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.setValueAtTime(0.16, t + i * 0.09);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.35);
+      osc.connect(g).connect(this.master!);
+      osc.start(t + i * 0.09);
+      osc.stop(t + i * 0.09 + 0.4);
+    });
+  }
 }

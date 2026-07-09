@@ -7,8 +7,16 @@ export interface GameOverStats {
   score: number;
   best: number;
   kills: number;
+  wave: number;
   accuracy: number; // 0..1
   isNewBest: boolean;
+}
+
+export interface HpBarInfo {
+  x: number;
+  y: number;
+  fraction: number; // 0..1
+  width: number; // px
 }
 
 const HEART_SVG = `<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="#ff5b6e" stroke="rgba(255,255,255,0.85)" stroke-width="1.4"/></svg>`;
@@ -47,6 +55,9 @@ export class HUD {
   private overStats: HTMLDivElement;
   private overBest: HTMLDivElement;
   private controlHint: HTMLDivElement;
+  private waveEl!: HTMLDivElement;
+  private comboEl!: HTMLDivElement;
+  private hpBars: { root: HTMLDivElement; fill: HTMLDivElement }[] = [];
   private popups: { el: HTMLDivElement; busy: boolean }[] = [];
 
   constructor(root: HTMLElement) {
@@ -65,10 +76,14 @@ export class HUD {
       heart.innerHTML = HEART_SVG;
       this.heartItems.push(heart);
     }
+    this.waveEl = el("div", "wave-indicator", top);
+    this.waveEl.textContent = "";
+
     const scoreBox = el("div", "score-box", top);
     this.scoreEl = el("div", "score-value", scoreBox);
     this.scoreEl.textContent = "0";
     el("div", "score-label", scoreBox).textContent = "SCORE";
+    this.comboEl = el("div", "combo", scoreBox);
 
     this.vignetteEl = el("div", "vignette", root);
 
@@ -76,6 +91,14 @@ export class HUD {
     this.crosshairEl.innerHTML = CROSSHAIR_SVG + `<div class="hitmark">${HITMARK_SVG}</div>`;
 
     this.warningEl = el("div", "warning", root);
+
+    // pooled enemy health bars, projected over the jets each frame
+    for (let i = 0; i < 16; i++) {
+      const bar = el("div", "hpbar", root);
+      const fill = el("div", "hpfill", bar);
+      bar.style.display = "none";
+      this.hpBars.push({ root: bar, fill });
+    }
 
     for (let i = 0; i < VFX.POPUP_POOL; i++) {
       const popup = el("div", "popup", root);
@@ -159,11 +182,46 @@ export class HUD {
     window.setTimeout(() => this.vignetteEl.classList.remove("flash"), 130);
   }
 
-  warning(text: string): void {
+  warning(text: string, gold = false): void {
     this.warningEl.textContent = text;
+    this.warningEl.classList.toggle("gold", gold);
     this.warningEl.classList.remove("live");
     void this.warningEl.offsetWidth;
     this.warningEl.classList.add("live");
+  }
+
+  setWave(wave: number): void {
+    this.waveEl.textContent = wave > 0 ? `WAVE ${wave}` : "";
+  }
+
+  setCombo(streak: number, multiplier: number): void {
+    if (multiplier <= 1) {
+      this.comboEl.textContent = "";
+      return;
+    }
+    this.comboEl.textContent = `×${multiplier} COMBO (${streak})`;
+    this.comboEl.classList.remove("pop");
+    void this.comboEl.offsetWidth;
+    this.comboEl.classList.add("pop");
+  }
+
+  /** Positions one pooled bar per entry; hides the rest. Coords in CSS px. */
+  updateHpBars(bars: HpBarInfo[]): void {
+    for (let i = 0; i < this.hpBars.length; i++) {
+      const slot = this.hpBars[i];
+      const info = bars[i];
+      if (!info) {
+        slot.root.style.display = "none";
+        continue;
+      }
+      slot.root.style.display = "block";
+      slot.root.style.left = `${info.x}px`;
+      slot.root.style.top = `${info.y}px`;
+      slot.root.style.width = `${info.width}px`;
+      slot.fill.style.width = `${(info.fraction * 100).toFixed(1)}%`;
+      slot.fill.className =
+        info.fraction > 0.55 ? "hpfill" : info.fraction > 0.28 ? "hpfill mid" : "hpfill low";
+    }
   }
 
   popup(x: number, y: number, text: string): void {
@@ -198,6 +256,7 @@ export class HUD {
     };
     row("SCORE", fmt(stats.score));
     row("BEST", fmt(stats.best));
+    row("WAVE", fmt(stats.wave));
     row("JETS DOWN", fmt(stats.kills));
     row("ACCURACY", `${Math.round(stats.accuracy * 100)}%`);
     this.overBest.textContent = stats.isNewBest ? "★ NEW BEST SCORE ★" : "";

@@ -4,62 +4,73 @@ import type { StandardMaterial } from "@babylonjs/core/Materials/standardMateria
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { ENEMY, WORLD } from "../game/Constants";
+import type { EnemyTypeDef } from "../data/EnemyData";
+import { getNavMaterials, type JetVariant } from "../factories/JetFactory";
 import { evaluatePath, pathTangent, type FlightPath } from "../systems/FlightPathSystem";
 import type { VFXSystem } from "../systems/VFXSystem";
 
 // Pooled enemy. The root node carries flight position/orientation (and the
 // hitboxes with it); the visual child carries banking roll and hit-shake so
-// cosmetic motion never distorts the hitboxes (spec §16).
+// cosmetic motion never distorts the hitboxes (spec §16). The deterministic
+// weave offsets the ROOT, so hitboxes always follow.
 
 export class EnemyJet {
   root: TransformNode;
   visual: Mesh;
   hitboxes: Mesh[] = [];
+  def: EnemyTypeDef;
   active = false;
-  health = ENEMY.HEALTH;
+  health: number;
 
   private mat: StandardMaterial;
   private vfx: VFXSystem;
   private path: FlightPath | null = null;
   private progress = 0;
   private speed: number = ENEMY.BASE_SPEED;
+  private age = 0;
+  private weavePhase = 0;
   private bank = 0;
   private flashTimer = 0;
   private trailTimer = 0;
   private smokeTimer = 0;
+  private navLights: Mesh[] = []; // [red, green, white-strobe]
   private dir = new Vector3(0, 0, -1);
   private tmp = new Vector3();
   private tmp2 = new Vector3();
 
-  constructor(index: number, scene: Scene, baseMesh: Mesh, vfx: VFXSystem) {
+  constructor(index: number, scene: Scene, variant: JetVariant, def: EnemyTypeDef, vfx: VFXSystem) {
     this.vfx = vfx;
-    this.root = new TransformNode(`enemy${index}`, scene);
+    this.def = def;
+    this.health = def.health;
+    this.root = new TransformNode(`enemy_${def.id}${index}`, scene);
 
-    this.visual = baseMesh.clone(`enemyVisual${index}`, this.root);
+    this.visual = variant.mesh.clone(`enemyVisual_${def.id}${index}`, this.root);
     this.visual.setEnabled(true);
-    this.mat = (baseMesh.material as StandardMaterial).clone(`enemyMat${index}`)!;
+    this.mat = (variant.mesh.material as StandardMaterial).clone(`enemyMat_${def.id}${index}`)!;
     this.visual.material = this.mat;
     this.visual.isPickable = false;
 
     // hitboxes are slightly larger than the visual mesh (mobile fairness, spec §18)
-    const body = CreateBox(`enemyHitBody${index}`, {
-      width: ENEMY.HITBOX_BODY.w,
-      height: ENEMY.HITBOX_BODY.h,
-      depth: ENEMY.HITBOX_BODY.d,
+    const k = def.hitboxScale;
+    const body = CreateBox(`enemyHitBody_${def.id}${index}`, {
+      width: ENEMY.HITBOX_BODY.w * k,
+      height: ENEMY.HITBOX_BODY.h * k,
+      depth: ENEMY.HITBOX_BODY.d * k,
     }, scene);
-    const wingL = CreateBox(`enemyHitWingL${index}`, {
-      width: ENEMY.HITBOX_WING.w,
-      height: ENEMY.HITBOX_WING.h,
-      depth: ENEMY.HITBOX_WING.d,
+    const wingL = CreateBox(`enemyHitWingL_${def.id}${index}`, {
+      width: ENEMY.HITBOX_WING.w * k,
+      height: ENEMY.HITBOX_WING.h * k,
+      depth: ENEMY.HITBOX_WING.d * k,
     }, scene);
-    wingL.position.set(-1.35, -0.05, -0.55);
-    const wingR = CreateBox(`enemyHitWingR${index}`, {
-      width: ENEMY.HITBOX_WING.w,
-      height: ENEMY.HITBOX_WING.h,
-      depth: ENEMY.HITBOX_WING.d,
+    wingL.position.set(-1.35 * k, -0.05, -0.55);
+    const wingR = CreateBox(`enemyHitWingR_${def.id}${index}`, {
+      width: ENEMY.HITBOX_WING.w * k,
+      height: ENEMY.HITBOX_WING.h * k,
+      depth: ENEMY.HITBOX_WING.d * k,
     }, scene);
-    wingR.position.set(1.35, -0.05, -0.55);
+    wingR.position.set(1.35 * k, -0.05, -0.55);
 
     for (const box of [body, wingL, wingR]) {
       box.parent = this.root;
@@ -68,14 +79,35 @@ export class EnemyJet {
       this.hitboxes.push(box);
     }
 
+    // navigation lights: red port, green starboard, white tail strobe
+    const nav = getNavMaterials(scene);
+    const anchors = [variant.navLeft, variant.navRight, variant.navTail];
+    const mats = [nav.red, nav.green, nav.white];
+    for (let i = 0; i < 3; i++) {
+      const light = CreatePlane(`enemyNav_${def.id}${index}_${i}`, { size: 0.42 }, scene);
+      light.material = mats[i];
+      light.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      light.parent = this.visual;
+      light.position.copyFrom(anchors[i]);
+      light.isPickable = false;
+      light.visibility = 0;
+      this.navLights.push(light);
+    }
+
     this.root.setEnabled(false);
+  }
+
+  get healthFraction(): number {
+    return Math.max(0, this.health / this.def.health);
   }
 
   spawn(path: FlightPath, speed: number): void {
     this.path = path;
     this.speed = speed;
     this.progress = 0;
-    this.health = ENEMY.HEALTH;
+    this.health = this.def.health;
+    this.age = 0;
+    this.weavePhase = Math.random() * Math.PI * 2; // spawn-time randomness only (spec §16)
     this.bank = 0;
     this.flashTimer = 0;
     this.trailTimer = 0;
@@ -101,19 +133,29 @@ export class EnemyJet {
   }
 
   /** Advances flight. Returns true when the jet has reached the danger zone. */
-  update(dt: number): boolean {
+  update(dt: number, nightFactor: number): boolean {
     const path = this.path!;
+    this.age += dt;
     this.progress += (this.speed * dt) / path.length;
     if (this.progress >= 1) return true;
 
     evaluatePath(path, this.progress, this.tmp);
     pathTangent(path, this.progress, this.dir);
+
+    // deterministic weave applied to the root — hitboxes ride along
+    let weaveVel = 0;
+    if (this.def.weaveAmp > 0) {
+      const phase = this.age * this.def.weaveFreq + this.weavePhase;
+      this.tmp.x += Math.sin(phase) * this.def.weaveAmp;
+      weaveVel = Math.cos(phase) * this.def.weaveAmp * this.def.weaveFreq;
+    }
+
     this.root.position.copyFrom(this.tmp);
     this.tmp2.copyFrom(this.tmp).addInPlace(this.dir);
     this.root.lookAt(this.tmp2);
 
-    // banking follows lateral velocity, smoothed (sign tuned for a natural lean-in)
-    const bankTarget = -this.dir.x * ENEMY.BANK_FACTOR;
+    // banking follows lateral velocity (path + weave), smoothed
+    const bankTarget = -(this.dir.x + weaveVel * 0.05) * ENEMY.BANK_FACTOR;
     this.bank += (bankTarget - this.bank) * Math.min(1, ENEMY.BANK_SMOOTHING * dt);
     this.visual.rotation.z = this.bank;
 
@@ -128,6 +170,12 @@ export class EnemyJet {
       }
     }
 
+    // navigation lights: faint by day, glowing at night; tail strobe blinks ~1Hz
+    const navVis = 0.08 + 0.92 * nightFactor;
+    this.navLights[0].visibility = navVis;
+    this.navLights[1].visibility = navVis;
+    this.navLights[2].visibility = navVis * (Math.sin(this.age * 6.5 + this.weavePhase) > 0.55 ? 1 : 0.08);
+
     // engine contrail puffs on a cadence (helps players spot distant jets)
     this.trailTimer -= dt;
     if (this.trailTimer <= 0) {
@@ -137,7 +185,7 @@ export class EnemyJet {
     }
 
     // damaged jets stream dark smoke (spec §20 readable damage states)
-    if (this.health < ENEMY.HEALTH) {
+    if (this.health < this.def.health) {
       this.smokeTimer -= dt;
       if (this.smokeTimer <= 0) {
         this.smokeTimer = 0.09;

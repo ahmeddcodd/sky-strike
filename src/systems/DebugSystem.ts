@@ -12,15 +12,19 @@ import type { EnemyManager } from "./EnemyManager";
 import type { EnemySpawner } from "./EnemySpawner";
 import type { WeaponSystem } from "./WeaponSystem";
 import type { HealthSystem } from "./HealthSystem";
+import type { ComboSystem } from "./ComboSystem";
+import type { Environment } from "../factories/EnvironmentFactory";
 
 // Tuning tools (spec §45). Only constructed in dev builds or with ?debug=1.
-// Hotkeys: ` toggle visuals · J spawn jet · C clear enemies · I invincible.
+// Hotkeys: ` visuals · J spawn jet · C clear · I invincible · W skip wave · N night toggle.
 
 interface DebugDeps {
   manager: EnemyManager;
   spawner: EnemySpawner;
   weapon: WeaponSystem;
   health: HealthSystem;
+  combo: ComboSystem;
+  env: Environment;
   hudRoot: HTMLElement;
 }
 
@@ -87,6 +91,12 @@ export class DebugSystem {
         case "KeyI":
           deps.health.invincible = !deps.health.invincible;
           break;
+        case "KeyW":
+          deps.spawner.skipWave();
+          break;
+        case "KeyN":
+          deps.env.snapNight(deps.env.nightFactor > 0.5 ? 0 : 1);
+          break;
       }
     });
   }
@@ -108,9 +118,12 @@ export class DebugSystem {
     if (!this.visible) return;
     this.panel.textContent =
       `FPS        ${this.engine.getFps().toFixed(0)}\n` +
+      `wave       ${this.deps.spawner.wave}\n` +
       `enemies    ${this.deps.manager.activeCount}\n` +
       `shots/hits ${this.deps.weapon.shots}/${this.deps.weapon.hits}\n` +
+      `combo      ${this.deps.combo.streak} (×${this.deps.combo.multiplier})\n` +
+      `night      ${this.deps.env.nightFactor.toFixed(2)}\n` +
       `invincible ${this.deps.health.invincible ? "ON" : "off"}\n` +
-      `keys: \` hitboxes · J spawn · C clear · I invincible`;
+      `keys: \` boxes · J spawn · C clear · I invinc · W wave · N night`;
   }
 }

@@ -35,11 +35,8 @@ export const PLAYER_JET = {
 } as const;
 
 export const ENEMY = {
-  POOL_SIZE: 12,
-  MAX_ACTIVE: 8,
-  HEALTH: 2,
-  BASE_SPEED: 21, // world units per second along the path (~5-6s approach at ramp start)
-  SCORE: 100,
+  MAX_ACTIVE: 9,
+  BASE_SPEED: 21, // world units per second along the path (~5-6s approach at wave 1)
   HIT_FLASH_TIME: 0.06,
   // Spawn/end lateral placement as a fraction of the camera frustum half-extents
   SPAWN_X_SPREAD: 0.7,
@@ -48,20 +45,42 @@ export const ENEMY = {
   END_X_SPREAD: 0.45,
   END_Y_MIN: -0.25,
   END_Y_MAX: 0.25,
-  // Hitboxes are deliberately larger than the visual mesh (mobile fairness)
+  // Hitboxes are deliberately larger than the visual mesh (mobile fairness);
+  // scaled per enemy type via EnemyData.hitboxScale
   HITBOX_BODY: { w: 1.3, h: 1.3, d: 5.0 },
   HITBOX_WING: { w: 2.0, h: 0.7, d: 1.8 },
   BANK_FACTOR: 1.6, // roll (rad) per unit of normalized lateral velocity
   BANK_SMOOTHING: 6, // higher = snappier banking
 } as const;
 
-export const SPAWN = {
+export const WAVE = {
   FIRST_DELAY: 1.6,
-  INTERVAL_START: 2.2,
-  INTERVAL_END: 0.9,
-  SPEED_SCALE_START: 1.0,
-  SPEED_SCALE_END: 1.6,
-  RAMP_TIME: 90, // seconds to reach full difficulty
+  LULL: 2.5, // pause between waves
+  BASE_COUNT: 4,
+  COUNT_PER_WAVE: 2,
+  COUNT_CAP: 26,
+  INTERVAL_START: 1.8, // spawn interval inside wave 1...
+  INTERVAL_END: 0.8, // ...ramping to this by INTERVAL_RAMP_WAVES
+  INTERVAL_RAMP_WAVES: 8,
+  SPEED_PER_WAVE: 0.06,
+  SPEED_CAP: 1.6,
+  FAST_UNLOCK: 2, // wave that introduces fast jets
+  ARMORED_UNLOCK: 4, // wave that introduces armored jets
+  CLEAR_BONUS_BASE: 150,
+  CLEAR_BONUS_PER_WAVE: 50,
+} as const;
+
+export const COMBO = {
+  WINDOW: 3, // seconds between kills to keep the chain alive
+  TIER_X2: 3, // streak thresholds
+  TIER_X3: 5,
+  TIER_X5: 10,
+} as const;
+
+export const NIGHT = {
+  EASE: 0.08, // nightFactor units per second toward the target
+  // wave → target night factor: waves 1-2 day, 3-4 dusk, 5+ full night
+  TARGETS: [0, 0, 0, 0.45, 0.75, 1],
 } as const;
 
 export const WEAPON = {

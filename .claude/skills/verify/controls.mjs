@@ -1,7 +1,7 @@
-// Verifies the two control schemes:
+﻿// Verifies the two control schemes:
 //  desktop (mouse): crosshair follows the cursor with no button held, OS cursor
 //    hidden over the canvas, hold-to-fire works
-//  touch: drag anywhere moves the crosshair by the finger delta (×DRAG_GAIN),
+//  touch: drag anywhere moves the crosshair by the finger delta (x DRAG_GAIN),
 //    holding fires; there is NO joystick element; mouse use flips back live.
 // Touch input must be dispatched via CDP (Playwright's touchscreen has no drag).
 import { chromium } from "playwright";
@@ -46,7 +46,7 @@ console.log("=== desktop mode ===");
   await page.waitForTimeout(600);
   await page.mouse.up();
   const panel = await page.$eval(".debug-panel", (n) => n.textContent);
-  console.log("after hold:", JSON.stringify(panel.split("\n")[2]), "(shots > 0)");
+  console.log("after hold:", JSON.stringify(panel.split("\n").find((l) => l.includes("shots"))), "(shots > 0)");
   await page.close();
 }
 
@@ -66,7 +66,7 @@ console.log("=== touch drag (deviceScaleFactor 2) ===");
   await page.keyboard.press("Backquote");
   console.log("joystick element exists:", (await page.$(".joystick")) !== null, "(want false)");
 
-  // drag 100px right, 80px up → crosshair moves by delta × DRAG_GAIN (1.15)
+  // drag 100px right, 80px up -> crosshair moves by delta x DRAG_GAIN (1.15)
   const before = await crosshair(page);
   await touch("touchStart", [{ x: 100, y: 500 }]);
   await touch("touchMove", [{ x: 150, y: 460 }]);
@@ -82,7 +82,7 @@ console.log("=== touch drag (deviceScaleFactor 2) ===");
   // holding the drag fires
   await page.waitForTimeout(400);
   const panel = await page.$eval(".debug-panel", (n) => n.textContent);
-  console.log("while holding:", JSON.stringify(panel.split("\n")[2]), "(shots > 0)");
+  console.log("while holding:", JSON.stringify(panel.split("\n").find((l) => l.includes("shots"))), "(shots > 0)");
   await touch("touchEnd", []);
   await page.screenshot({ path: `${SHOTS}/touch-drag.png` });
 
@@ -94,7 +94,7 @@ console.log("=== touch drag (deviceScaleFactor 2) ===");
   // a mouse movement flips to desktop mode
   await page.mouse.move(W / 2, 300);
   await page.waitForTimeout(200);
-  console.log("after mouse move — canvas cursor:", await canvasCursor(page), "(want none)");
+  console.log("after mouse move - canvas cursor:", await canvasCursor(page), "(want none)");
   await page.close();
 }
 
