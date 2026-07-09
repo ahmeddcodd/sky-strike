@@ -4,8 +4,17 @@
 export class AudioSystem {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private musicBus: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private muted = false;
+
+  // background-music state (synthesized cinematic-military loop)
+  private musicOn = false;
+  private musicTimer: number | null = null;
+  private musicDrone: OscillatorNode[] = [];
+  private nextBeatTime = 0;
+  private beat = 0;
+  private intensity = 0; // rises with wave number
 
   /** Call from a user gesture (pointerdown) to unlock audio on mobile. */
   unlock(): void {
@@ -15,12 +24,21 @@ export class AudioSystem {
         this.master = this.ctx.createGain();
         this.master.gain.value = this.muted ? 0 : 0.5;
         this.master.connect(this.ctx.destination);
+        // music rides its own quieter bus under master, so SFX and music
+        // balance independently but both obey mute (master) + pause (context)
+        this.musicBus = this.ctx.createGain();
+        this.musicBus.gain.value = 0.85;
+        this.musicBus.connect(this.master);
         this.noiseBuffer = this.makeNoise();
       } catch {
         return; // no audio support — game stays silent
       }
     }
     if (this.ctx.state === "suspended") void this.ctx.resume();
+  }
+
+  get isMusicOn(): boolean {
+    return this.musicOn;
   }
 
   get isMuted(): boolean {
@@ -201,5 +219,153 @@ export class AudioSystem {
       osc.start(t + i * 0.09);
       osc.stop(t + i * 0.09 + 0.4);
     });
+  }
+
+  // ---------- background music (cinematic military) ----------
+  // A tense synthesized bed: a sustained low drone (root + fifth) under a
+  // martial drum pulse and slow minor brass-like swells. Notes are scheduled
+  // with a lookahead clock (the standard Web Audio pattern) so timing stays
+  // tight and survives tab throttling; no per-frame work.
+
+  private static readonly BEAT = 60 / 84; // seconds per beat (~84 BPM, march tempo)
+
+  /** Starts the music loop (idempotent). Call after unlock(), on game start. */
+  startMusic(): void {
+    if (this.musicOn || !this.ctx || !this.musicBus) return;
+    this.musicOn = true;
+    this.beat = 0;
+    this.nextBeatTime = this.ctx.currentTime + 0.1;
+
+    // sustained drone: A1 root + E2 fifth through a lowpass — the tense floor
+    for (const [freq, type, gain] of [[55, "sawtooth", 0.06], [82.4, "triangle", 0.045]] as const) {
+      const osc = this.ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = freq;
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 340;
+      const g = this.ctx.createGain();
+      g.gain.value = gain;
+      osc.connect(lp).connect(g).connect(this.musicBus);
+      osc.start();
+      this.musicDrone.push(osc);
+    }
+
+    // lookahead scheduler: wake ~every 40ms, schedule any beats within 0.2s
+    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 40);
+  }
+
+  /** Stops the music loop and frees its nodes (idempotent). */
+  stopMusic(): void {
+    this.musicOn = false;
+    if (this.musicTimer !== null) {
+      clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+    const t = this.ctx ? this.ctx.currentTime : 0;
+    for (const osc of this.musicDrone) {
+      try {
+        osc.stop(t + 0.1);
+      } catch {
+        // already stopped
+      }
+    }
+    this.musicDrone = [];
+  }
+
+  /** Wave number nudges the arrangement busier (deterministic, cheap). */
+  setMusicIntensity(wave: number): void {
+    this.intensity = Math.min(1, Math.max(0, (wave - 1) / 6));
+  }
+
+  private scheduleMusic(): void {
+    if (!this.ctx || !this.musicOn) return;
+    const ahead = this.ctx.currentTime + 0.2;
+    while (this.nextBeatTime < ahead) {
+      this.playBeat(this.beat, this.nextBeatTime);
+      this.beat = (this.beat + 1) % 16; // 4-bar phrase in 4/4
+      this.nextBeatTime += AudioSystem.BEAT;
+    }
+  }
+
+  /** One beat of the pattern at absolute time `t`. */
+  private playBeat(beat: number, t: number): void {
+    // martial kick on every beat; snare-ish backbeat on 2 and 4 of each bar
+    this.kick(t);
+    if (beat % 4 === 2) this.snare(t);
+    // busier at higher waves: off-beat tick
+    if (this.intensity > 0.3 && beat % 2 === 1) this.tick(t, 0.03 + this.intensity * 0.04);
+    // brass-like minor swell at the top of each 4-bar phrase (and its half)
+    if (beat === 0) this.brassSwell(t, [110, 130.8, 164.8]); // A minor
+    else if (beat === 8) this.brassSwell(t, [98, 123.5, 146.8]); // G minor-ish for movement
+  }
+
+  private kick(t: number): void {
+    if (!this.musicBus || !this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(120, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.5, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc.connect(g).connect(this.musicBus);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  private snare(t: number): void {
+    if (!this.musicBus || !this.ctx || !this.noiseBuffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = "highpass";
+    bp.frequency.value = 1400;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    src.connect(bp).connect(g).connect(this.musicBus);
+    src.start(t, Math.random() * 0.5, 0.16);
+  }
+
+  private tick(t: number, gain: number): void {
+    if (!this.musicBus || !this.ctx || !this.noiseBuffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 6000;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    src.connect(hp).connect(g).connect(this.musicBus);
+    src.start(t, Math.random() * 0.5, 0.06);
+  }
+
+  private brassSwell(t: number, chord: number[]): void {
+    if (!this.musicBus || !this.ctx) return;
+    const dur = AudioSystem.BEAT * 4; // one bar
+    const peak = 0.05 + this.intensity * 0.03;
+    for (const freq of chord) {
+      // two slightly detuned saws per note for a fuller brass texture
+      for (const detune of [-4, 4]) {
+        const osc = this.ctx.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.value = freq;
+        osc.detune.value = detune;
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.setValueAtTime(500, t);
+        lp.frequency.linearRampToValueAtTime(1200, t + dur * 0.4);
+        lp.frequency.linearRampToValueAtTime(500, t + dur);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(peak / chord.length, t + dur * 0.4); // slow attack
+        g.gain.linearRampToValueAtTime(0.0001, t + dur); // slow release
+        osc.connect(lp).connect(g).connect(this.musicBus);
+        osc.start(t);
+        osc.stop(t + dur + 0.05);
+      }
+    }
   }
 }

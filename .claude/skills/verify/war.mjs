@@ -42,6 +42,20 @@ for (const [x, y] of [[W/2-70, H*0.32], [W/2+70, H*0.38], [W/2, H*0.3], [W/2-50,
 }
 await page.mouse.up();
 console.log("combo element:", JSON.stringify(await page.$eval(".combo", (n) => n.textContent)));
+// combo must be on its own absolute tier and must NOT overlap the wave indicator
+const comboLayout = await page.evaluate(() => {
+  const c = document.querySelector(".combo");
+  const w = document.querySelector(".wave-indicator");
+  const pos = getComputedStyle(c).position;
+  // force it visible to measure geometry even if no chain landed
+  c.classList.add("show");
+  if (!c.textContent) c.textContent = "×5 COMBO (10)";
+  const cb = c.getBoundingClientRect();
+  const wb = w.getBoundingClientRect();
+  const overlap = !(cb.right < wb.left || cb.left > wb.right || cb.bottom < wb.top || cb.top > wb.bottom);
+  return { pos, overlap, comboBox: { x: Math.round(cb.x), y: Math.round(cb.y), w: Math.round(cb.width) } };
+});
+console.log("combo position:", comboLayout.pos, "(want absolute) | overlaps wave indicator:", comboLayout.overlap, "(want false)");
 console.log(JSON.stringify(await panel()));
 
 console.log("=== night (N snap) + jets with nav lights ===");

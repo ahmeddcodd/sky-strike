@@ -103,10 +103,11 @@ export class GameApp {
 
     if (import.meta.env.DEV || new URLSearchParams(location.search).has("debug")) {
       // live-inspection hooks for the verify driver
-      const w = window as { __scene?: Scene; __audioMuted?: boolean; __paused?: boolean };
+      const w = window as { __scene?: Scene; __audioMuted?: boolean; __paused?: boolean; __musicOn?: boolean };
       w.__scene = this.scene;
       Object.defineProperty(w, "__audioMuted", { get: () => this.audio.isMuted, configurable: true });
       Object.defineProperty(w, "__paused", { get: () => this.paused, configurable: true });
+      Object.defineProperty(w, "__musicOn", { get: () => this.audio.isMusicOn, configurable: true });
       this.debug = new DebugSystem(this.scene, this.engine, {
         manager: this.enemyManager,
         spawner: this.spawner,
@@ -185,6 +186,7 @@ export class GameApp {
       this.hud.setWave(wave);
       this.hud.warning(`WAVE ${wave}`, true);
       this.audio.waveStart();
+      this.audio.setMusicIntensity(wave); // music gets busier as waves climb
       this.enemyFire.setWave(wave);
       this.powerUps.onWaveStart(wave);
       // night falls as the waves progress (spec: day → dusk → night)
@@ -239,7 +241,16 @@ export class GameApp {
       this.firstFrameDone = true;
       this.playables.firstFrameReady();
       this.playables.gameReady(); // start overlay is already interactive
+      this.hideLoader();
     }
+  }
+
+  /** Fades out the initial loading screen once the first frame is on screen. */
+  private hideLoader(): void {
+    const loader = document.getElementById("loader");
+    if (!loader) return;
+    loader.classList.add("done");
+    loader.addEventListener("transitionend", () => loader.remove(), { once: true });
   }
 
   private update(dt: number): void {
@@ -334,6 +345,8 @@ export class GameApp {
     this.input.center();
     this.audio.unlock();
     this.audio.uiTap();
+    this.audio.setMusicIntensity(1);
+    this.audio.startMusic(); // cinematic bed during play; menu stays quiet
     this.state = "playing";
   }
 
@@ -372,6 +385,7 @@ export class GameApp {
     this.powerUps.reset();
     this.hud.setFiring(false);
     this.hud.setHudVisible(false);
+    this.audio.stopMusic();
     this.audio.gameOver();
     const isNewBest = this.save.submitScore(this.score.score);
     this.hud.showGameOver({

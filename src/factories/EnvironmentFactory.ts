@@ -4,6 +4,7 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { ColorCurves } from "@babylonjs/core/Materials/colorCurves";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -35,7 +36,7 @@ const SKY_DUSK = ["#1c2b5e", "#4b4a8e", "#b06a7e", "#e89a63", "#f7bd68", "#6f5a7
 // moonlit navy — bright enough that jets and ocean stay readable
 const SKY_NIGHT = ["#0b1530", "#142448", "#1e3560", "#2a4878", "#345381", "#182a4d"];
 
-const FOG_DAY = new Color3(0.72, 0.84, 0.94);
+const FOG_DAY = new Color3(0.66, 0.8, 0.92);
 const FOG_NIGHT = new Color3(0.1, 0.16, 0.27);
 
 interface DriftCloud {
@@ -93,6 +94,17 @@ export class Environment {
     scene.fogMode = 2; // Scene.FOGMODE_EXP2 (constant inlined to keep imports lean)
     scene.fogDensity = WORLD.FOG_DENSITY;
     scene.fogColor = FOG_DAY.clone();
+
+    // Global color grade (applies to every StandardMaterial — no PBR here).
+    // Adds contrast + vibrance so the scene reads richer, most noticeably on
+    // high-DPR phones where the flat StandardMaterial output looked washed out.
+    const ip = scene.imageProcessingConfiguration;
+    ip.contrast = 1.35;
+    ip.exposure = 1.05;
+    ip.colorCurvesEnabled = true;
+    const curves = new ColorCurves();
+    curves.globalSaturation = 18; // vibrance (~-100..100)
+    ip.colorCurves = curves;
 
     this.createLights();
     this.createSkyDome();

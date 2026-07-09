@@ -13,7 +13,7 @@ export const WORLD = {
   SPAWN_Z_MAX: 135,
   DANGER_Z: 10, // enemy crossing this plane damages the player (just ahead of the jet's nose)
   PATH_END_Z: 4, // Bézier endpoint, past the danger plane so jets fly *through* it
-  FOG_DENSITY: 0.0055,
+  FOG_DENSITY: 0.0042,
   FLY_SPEED: 42, // visual world-scroll speed (ocean/islands/wisps) — the forward-flight cue
 } as const;
 

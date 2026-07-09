@@ -110,7 +110,9 @@ export class HUD {
     this.scoreEl = el("div", "score-value", scoreBox);
     this.scoreEl.textContent = "0";
     el("div", "score-label", scoreBox).textContent = "SCORE";
-    this.comboEl = el("div", "combo", scoreBox);
+
+    // combo sits on its own tier under the score chip so it never reflows/overlaps it
+    this.comboEl = el("div", "combo", root);
 
     this.vignetteEl = el("div", "vignette", root);
 
@@ -292,10 +294,11 @@ export class HUD {
 
   setCombo(streak: number, multiplier: number): void {
     if (multiplier <= 1) {
-      this.comboEl.textContent = "";
+      this.comboEl.classList.remove("show", "pop");
       return;
     }
-    this.comboEl.textContent = `×${multiplier} COMBO (${streak})`;
+    this.comboEl.textContent = `×${multiplier} COMBO · ${streak}`;
+    this.comboEl.classList.add("show");
     this.comboEl.classList.remove("pop");
     void this.comboEl.offsetWidth;
     this.comboEl.classList.add("pop");
