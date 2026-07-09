@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pack": "node scripts/pack.mjs",
+    "package": "npm run build && npm run pack"
   },
   "devDependencies": {
     "playwright": "^1.61.1",
