@@ -82,6 +82,7 @@ export class Environment {
   private distantClouds: DriftCloud[] = [];
   private streamers: StreamItem[] = [];
   private islands: Mesh[] = [];
+  private sideProps: { mesh: Mesh; side: number }[] = [];
   private flakTimer = 3;
   private time = 0;
   private rand = seededRand(7);
@@ -114,6 +115,7 @@ export class Environment {
     this.createMountains();
     this.createClouds();
     this.createIslands();
+    this.createSideProps();
     this.createSearchlights();
     this.createSetPieces();
     this.applyNight(0);
@@ -471,9 +473,10 @@ export class Environment {
       return plane;
     };
 
-    for (let i = 0; i < 7; i++) {
-      const plane = cloudPlane(`cloudFar${i}`, 45 + this.rand() * 32, i);
-      plane.position.set((this.rand() - 0.5) * 640, 14 + this.rand() * 58, 260 + this.rand() * 220);
+    for (let i = 0; i < 11; i++) {
+      const plane = cloudPlane(`cloudFar${i}`, 42 + this.rand() * 34, i);
+      // widen the spread and lift some higher so the upper corners aren't empty
+      plane.position.set((this.rand() - 0.5) * 760, 16 + this.rand() * 80, 250 + this.rand() * 240);
       plane.visibility = 0.95;
       this.distantClouds.push({ mesh: plane, speed: 1 + this.rand() * 1.6 });
     }
@@ -524,14 +527,91 @@ export class Environment {
     mat.diffuseColor = Color3.White();
     mat.specularColor = Color3.Black();
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
       const island = this.makeIsland(i);
       island.material = mat;
-      const side = this.rand() > 0.5 ? 1 : -1;
-      island.position.set(side * (40 + this.rand() * 240), -32, 120 + this.rand() * 580);
+      // alternate sides and keep them out toward the edges so the left/right
+      // lanes stay populated instead of everything bunching up near center
+      const side = i % 2 === 0 ? 1 : -1;
+      island.position.set(side * (70 + this.rand() * 210), -32, 90 + this.rand() * 620);
       island.scaling.setAll(0.8 + this.rand() * 0.8);
       this.islands.push(island);
     }
+  }
+
+  // A small cluster of weathered rocks poking out of the water — cheap detail
+  // to keep the flanks from feeling empty. Merged to one mesh.
+  private makeRockStack(index: number): Mesh {
+    const rand = seededRand(701 + index * 53);
+    const parts: Mesh[] = [];
+    const lumps = 2 + Math.floor(rand() * 3);
+    for (let i = 0; i < lumps; i++) {
+      const h = 3 + rand() * 7;
+      const d = 3 + rand() * 6;
+      const rock = CreateCylinder(`sideRock${index}_${i}`, { height: h, diameterTop: d * (0.3 + rand() * 0.4), diameterBottom: d, tessellation: 6 }, this.scene);
+      paint(rock, rand() > 0.5 ? "#6b6f74" : "#565b62");
+      rock.position.set((rand() - 0.5) * 7, h / 2, (rand() - 0.5) * 7);
+      rock.rotation.y = rand() * Math.PI;
+      rock.rotation.z = (rand() - 0.5) * 0.3;
+      parts.push(rock);
+    }
+    const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
+    merged.name = `sideRockStack${index}`;
+    merged.isPickable = false;
+    return merged;
+  }
+
+  // A channel marker buoy — a little pop of color/life bobbing on the water.
+  private makeBuoy(index: number): Mesh {
+    const parts: Mesh[] = [];
+    const body = CreateCylinder(`buoyBody${index}`, { height: 3.4, diameterTop: 1.1, diameterBottom: 1.9, tessellation: 8 }, this.scene);
+    paint(body, index % 2 === 0 ? "#d24b3f" : "#e0a52f");
+    parts.push(body);
+    const cap = CreateCylinder(`buoyCap${index}`, { height: 1.0, diameter: 1.2, tessellation: 8 }, this.scene);
+    paint(cap, "#2b3038");
+    cap.position.y = 2.0;
+    parts.push(cap);
+    const pole = CreateCylinder(`buoyPole${index}`, { height: 1.6, diameter: 0.2, tessellation: 5 }, this.scene);
+    paint(pole, "#2b3038");
+    pole.position.y = 3.3;
+    parts.push(pole);
+    const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
+    merged.name = `buoy${index}`;
+    merged.isPickable = false;
+    return merged;
+  }
+
+  // Decorative props that scroll down dedicated left/right lanes so the flanks
+  // always have something without crowding the flight path. Two lanes: a NEAR
+  // lane hugging the (widest) bottom edges of the portrait frame, and a FAR
+  // lane of smaller stacks toward the horizon.
+  private createSideProps(): void {
+    const mat = new StandardMaterial("sidePropMat", this.scene);
+    mat.diffuseColor = Color3.White();
+    mat.specularColor = new Color3(0.15, 0.15, 0.15);
+
+    const add = (i: number, side: number, near: boolean): void => {
+      const mesh = i % 3 === 0 ? this.makeBuoy(i) : this.makeRockStack(i);
+      mesh.material = mat;
+      mesh.metadata = { near };
+      if (near) {
+        // hug the portrait screen edges: the frustum widens with depth, so x
+        // must be ~proportional to z (portrait half-width ≈ 0.22·z). Keep them
+        // just inside the edge (0.86×) so they read on-screen but clear of jets.
+        const z = 45 + this.rand() * 85;
+        mesh.position.set(side * z * 0.19, -31, z);
+        mesh.scaling.setAll(1.1 + this.rand() * 0.6);
+      } else {
+        const z = 120 + this.rand() * 520;
+        mesh.position.set(side * (55 + this.rand() * 70), -31, z);
+        mesh.scaling.setAll(0.9 + this.rand() * 0.7);
+      }
+      this.sideProps.push({ mesh, side });
+    };
+
+    let i = 0;
+    for (let k = 0; k < 6; k++) add(i++, k % 2 === 0 ? 1 : -1, true); // near lane
+    for (let k = 0; k < 8; k++) add(i++, k % 2 === 0 ? 1 : -1, false); // far lane
   }
 
   private createSearchlights(): void {
@@ -695,7 +775,7 @@ export class Environment {
 
     for (const cloud of this.distantClouds) {
       cloud.mesh.position.x += cloud.speed * dt;
-      if (cloud.mesh.position.x > 340) cloud.mesh.position.x = -340;
+      if (cloud.mesh.position.x > 400) cloud.mesh.position.x = -400;
     }
 
     for (const item of this.streamers) {
@@ -708,10 +788,31 @@ export class Environment {
     for (const island of this.islands) {
       island.position.z -= WORLD.FLY_SPEED * dt;
       if (island.position.z < -80) {
-        island.position.z += 750 + this.rand() * 150;
-        const side = this.rand() > 0.5 ? 1 : -1;
-        island.position.x = side * (40 + this.rand() * 240);
+        island.position.z += 700 + this.rand() * 180;
+        // keep the side it came in on so both lanes stay fed
+        const side = island.position.x >= 0 ? 1 : -1;
+        island.position.x = side * (70 + this.rand() * 210);
         island.scaling.setAll(0.8 + this.rand() * 0.8);
+      }
+    }
+
+    // side props scroll down the flanks and respawn ahead on the same side,
+    // keeping their near/far lane so the flanks stay evenly fed
+    for (const prop of this.sideProps) {
+      prop.mesh.position.z -= WORLD.FLY_SPEED * dt;
+      const near = (prop.mesh.metadata as { near: boolean }).near;
+      // NEAR props hug the screen edge: x ∝ z (frustum widens with depth) so
+      // they stay just inside the corners as they scroll toward the camera
+      if (near && prop.mesh.position.z > 0) prop.mesh.position.x = prop.side * prop.mesh.position.z * 0.19;
+      if (prop.mesh.position.z < -50) {
+        if (near) {
+          prop.mesh.position.z += 300 + this.rand() * 120;
+          prop.mesh.scaling.setAll(1.1 + this.rand() * 0.6);
+        } else {
+          prop.mesh.position.z += 560 + this.rand() * 160;
+          prop.mesh.position.x = prop.side * (55 + this.rand() * 70);
+          prop.mesh.scaling.setAll(0.9 + this.rand() * 0.7);
+        }
       }
     }
 
