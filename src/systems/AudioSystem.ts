@@ -8,12 +8,12 @@ export class AudioSystem {
   private noiseBuffer: AudioBuffer | null = null;
   private muted = false;
 
-  // background-music state (synthesized cinematic-military loop)
+  // background-music state (synthesized energetic synthwave loop)
   private musicOn = false;
   private musicTimer: number | null = null;
-  private musicDrone: OscillatorNode[] = [];
-  private nextBeatTime = 0;
-  private beat = 0;
+  private musicPad: OscillatorNode[] = []; // sustained pad oscillators
+  private nextStepTime = 0;
+  private step = 0; // 16th-note index within a 16-step bar
   private intensity = 0; // rises with wave number
 
   /** Call from a user gesture (pointerdown) to unlock audio on mobile. */
@@ -27,7 +27,7 @@ export class AudioSystem {
         // music rides its own quieter bus under master, so SFX and music
         // balance independently but both obey mute (master) + pause (context)
         this.musicBus = this.ctx.createGain();
-        this.musicBus.gain.value = 0.85;
+        this.musicBus.gain.value = 0.7;
         this.musicBus.connect(this.master);
         this.noiseBuffer = this.makeNoise();
       } catch {
@@ -221,38 +221,51 @@ export class AudioSystem {
     });
   }
 
-  // ---------- background music (cinematic military) ----------
-  // A tense synthesized bed: a sustained low drone (root + fifth) under a
-  // martial drum pulse and slow minor brass-like swells. Notes are scheduled
-  // with a lookahead clock (the standard Web Audio pattern) so timing stays
-  // tight and survives tab throttling; no per-frame work.
+  // ---------- background music (energetic synthwave) ----------
+  // A driving retro-arcade loop that matches the fast jet combat: four-on-the-
+  // floor kick, off-beat bass pulse, crisp hats, and a bright arpeggiated lead
+  // over a 4-bar minor progression, plus a warm sustained pad. Everything is
+  // scheduled on a 16th-note lookahead clock (the standard Web Audio pattern)
+  // so timing is tight and survives tab throttling; no per-frame work.
 
-  private static readonly BEAT = 60 / 84; // seconds per beat (~84 BPM, march tempo)
+  private static readonly STEP = 60 / 128 / 4; // one 16th note at 128 BPM (~0.117s)
+
+  // A minor progression: Am – F – C – G (one chord per bar). Bass roots (Hz),
+  // and a pentatonic-ish lead scale per bar for the arpeggio to ride.
+  private static readonly BASS = [55.0, 43.65, 65.41, 49.0]; // A1, F1, C2, G1
+  private static readonly CHORDS = [
+    [220.0, 261.63, 329.63], // Am  (A C E)
+    [174.61, 220.0, 261.63], // F   (F A C)
+    [261.63, 329.63, 392.0], // C   (C E G)
+    [196.0, 246.94, 293.66], // G   (G B D)
+  ];
+  // arpeggio note pattern (indices into the current chord + octave), one per 16th
+  private static readonly ARP = [0, 1, 2, 1, 0, 2, 1, 2, 0, 1, 2, 1, 0, 2, 1, 2];
 
   /** Starts the music loop (idempotent). Call after unlock(), on game start. */
   startMusic(): void {
     if (this.musicOn || !this.ctx || !this.musicBus) return;
     this.musicOn = true;
-    this.beat = 0;
-    this.nextBeatTime = this.ctx.currentTime + 0.1;
+    this.step = 0;
+    this.nextStepTime = this.ctx.currentTime + 0.1;
 
-    // sustained drone: A1 root + E2 fifth through a lowpass — the tense floor
-    for (const [freq, type, gain] of [[55, "sawtooth", 0.06], [82.4, "triangle", 0.045]] as const) {
+    // warm sustained pad (root + fifth), gently detuned — the energetic bed
+    for (const [freq, detune] of [[110, -5], [110, 6], [164.8, 0]] as const) {
       const osc = this.ctx.createOscillator();
-      osc.type = type;
+      osc.type = "sawtooth";
       osc.frequency.value = freq;
+      osc.detune.value = detune;
       const lp = this.ctx.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.value = 340;
+      lp.frequency.value = 900;
       const g = this.ctx.createGain();
-      g.gain.value = gain;
+      g.gain.value = 0.018;
       osc.connect(lp).connect(g).connect(this.musicBus);
       osc.start();
-      this.musicDrone.push(osc);
+      this.musicPad.push(osc);
     }
 
-    // lookahead scheduler: wake ~every 40ms, schedule any beats within 0.2s
-    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 40);
+    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 25);
   }
 
   /** Stops the music loop and frees its nodes (idempotent). */
@@ -263,14 +276,14 @@ export class AudioSystem {
       this.musicTimer = null;
     }
     const t = this.ctx ? this.ctx.currentTime : 0;
-    for (const osc of this.musicDrone) {
+    for (const osc of this.musicPad) {
       try {
         osc.stop(t + 0.1);
       } catch {
         // already stopped
       }
     }
-    this.musicDrone = [];
+    this.musicPad = [];
   }
 
   /** Wave number nudges the arrangement busier (deterministic, cheap). */
@@ -280,92 +293,113 @@ export class AudioSystem {
 
   private scheduleMusic(): void {
     if (!this.ctx || !this.musicOn) return;
-    const ahead = this.ctx.currentTime + 0.2;
-    while (this.nextBeatTime < ahead) {
-      this.playBeat(this.beat, this.nextBeatTime);
-      this.beat = (this.beat + 1) % 16; // 4-bar phrase in 4/4
-      this.nextBeatTime += AudioSystem.BEAT;
+    const ahead = this.ctx.currentTime + 0.12;
+    while (this.nextStepTime < ahead) {
+      this.playStep(this.step, this.nextStepTime);
+      this.step = (this.step + 1) % 64; // 4-bar loop, 16 steps/bar
+      this.nextStepTime += AudioSystem.STEP;
     }
   }
 
-  /** One beat of the pattern at absolute time `t`. */
-  private playBeat(beat: number, t: number): void {
-    // martial kick on every beat; snare-ish backbeat on 2 and 4 of each bar
-    this.kick(t);
-    if (beat % 4 === 2) this.snare(t);
-    // busier at higher waves: off-beat tick
-    if (this.intensity > 0.3 && beat % 2 === 1) this.tick(t, 0.03 + this.intensity * 0.04);
-    // brass-like minor swell at the top of each 4-bar phrase (and its half)
-    if (beat === 0) this.brassSwell(t, [110, 130.8, 164.8]); // A minor
-    else if (beat === 8) this.brassSwell(t, [98, 123.5, 146.8]); // G minor-ish for movement
+  /** One 16th-note step of the groove at absolute time `t`. */
+  private playStep(step: number, t: number): void {
+    const inBar = step % 16;
+    const bar = (step / 16) | 0; // 0..3 → which chord
+    const chord = AudioSystem.CHORDS[bar];
+
+    // four-on-the-floor kick (every quarter note)
+    if (inBar % 4 === 0) this.mKick(t);
+    // snappy backbeat on 2 and 4
+    if (inBar === 4 || inBar === 12) this.mSnare(t);
+    // driving off-beat bass on every 8th (the pump)
+    if (inBar % 2 === 0) this.mBass(AudioSystem.BASS[bar], t, inBar % 4 === 0);
+    // hi-hats: closed on every 16th, a touch louder on off-beats; open accent pre-downbeat
+    this.mHat(t, inBar % 4 === 2 ? 0.05 : 0.03, inBar === 14 || inBar === 6);
+    // bright arpeggio lead every 16th (the melody hook), octave up for sparkle
+    const note = chord[AudioSystem.ARP[inBar]] * 2;
+    this.mLead(note, t, inBar);
+    // extra energy at higher waves: a second arp layer a fifth up on off-beats
+    if (this.intensity > 0.35 && inBar % 2 === 1) {
+      this.mLead(chord[AudioSystem.ARP[(inBar + 2) % 16]] * 3, t, inBar, 0.02);
+    }
   }
 
-  private kick(t: number): void {
+  private mKick(t: number): void {
     if (!this.musicBus || !this.ctx) return;
     const osc = this.ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(120, t);
-    osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(48, t + 0.09);
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.5, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    g.gain.setValueAtTime(0.55, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
     osc.connect(g).connect(this.musicBus);
     osc.start(t);
-    osc.stop(t + 0.2);
+    osc.stop(t + 0.22);
   }
 
-  private snare(t: number): void {
+  private mSnare(t: number): void {
     if (!this.musicBus || !this.ctx || !this.noiseBuffer) return;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
     const bp = this.ctx.createBiquadFilter();
-    bp.type = "highpass";
-    bp.frequency.value = 1400;
+    bp.type = "bandpass";
+    bp.frequency.value = 1900;
+    bp.Q.value = 0.7;
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.28, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    g.gain.setValueAtTime(0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
     src.connect(bp).connect(g).connect(this.musicBus);
-    src.start(t, Math.random() * 0.5, 0.16);
+    src.start(t, Math.random() * 0.5, 0.15);
   }
 
-  private tick(t: number, gain: number): void {
+  private mHat(t: number, gain: number, open: boolean): void {
     if (!this.musicBus || !this.ctx || !this.noiseBuffer) return;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
     const hp = this.ctx.createBiquadFilter();
     hp.type = "highpass";
-    hp.frequency.value = 6000;
+    hp.frequency.value = 8000;
     const g = this.ctx.createGain();
+    const dur = open ? 0.12 : 0.035;
     g.gain.setValueAtTime(gain, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     src.connect(hp).connect(g).connect(this.musicBus);
-    src.start(t, Math.random() * 0.5, 0.06);
+    src.start(t, Math.random() * 0.5, dur + 0.02);
   }
 
-  private brassSwell(t: number, chord: number[]): void {
+  private mBass(freq: number, t: number, onBeat: boolean): void {
     if (!this.musicBus || !this.ctx) return;
-    const dur = AudioSystem.BEAT * 4; // one bar
-    const peak = 0.05 + this.intensity * 0.03;
-    for (const freq of chord) {
-      // two slightly detuned saws per note for a fuller brass texture
-      for (const detune of [-4, 4]) {
-        const osc = this.ctx.createOscillator();
-        osc.type = "sawtooth";
-        osc.frequency.value = freq;
-        osc.detune.value = detune;
-        const lp = this.ctx.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.setValueAtTime(500, t);
-        lp.frequency.linearRampToValueAtTime(1200, t + dur * 0.4);
-        lp.frequency.linearRampToValueAtTime(500, t + dur);
-        const g = this.ctx.createGain();
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.linearRampToValueAtTime(peak / chord.length, t + dur * 0.4); // slow attack
-        g.gain.linearRampToValueAtTime(0.0001, t + dur); // slow release
-        osc.connect(lp).connect(g).connect(this.musicBus);
-        osc.start(t);
-        osc.stop(t + dur + 0.05);
-      }
-    }
+    const osc = this.ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = freq;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(onBeat ? 700 : 480, t);
+    lp.frequency.exponentialRampToValueAtTime(180, t + 0.14);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.14, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc.connect(lp).connect(g).connect(this.musicBus);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  private mLead(freq: number, t: number, inBar: number, gain = 0.05): void {
+    if (!this.musicBus || !this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = freq;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2600;
+    const g = this.ctx.createGain();
+    const accent = inBar % 4 === 0 ? 1.25 : 1; // punch the downbeats
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain * accent, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.001, t + AudioSystem.STEP * 0.9);
+    osc.connect(lp).connect(g).connect(this.musicBus);
+    osc.start(t);
+    osc.stop(t + AudioSystem.STEP + 0.02);
   }
 }
