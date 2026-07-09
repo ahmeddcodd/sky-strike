@@ -33,7 +33,8 @@ export class PlayerJet {
   private tipL: TransformNode;
   private tipR: TransformNode;
   private flames: Mesh[] = [];
-  private navLights: Mesh[] = []; // [red, green, white-strobe]
+  private navLights: Mesh[] = []; // [red, green, white-strobe] — world-space, synced to anchors
+  private navAnchors: TransformNode[] = [];
   private muzzleWorld = new Vector3();
   private tmp = new Vector3();
 
@@ -61,16 +62,18 @@ export class PlayerJet {
     this.tipL = this.node(scene, "tipL", -2.3, -0.05, -0.95);
     this.tipR = this.node(scene, "tipR", 2.3, -0.05, -0.95);
 
-    // navigation lights: red port, green starboard, white tail strobe
+    // Navigation lights: red port, green starboard, white tail strobe.
+    // Billboarded planes must NOT be parented to the banking jet (Babylon
+    // mis-places them under parent rotation) — anchors ride the jet, the glow
+    // planes stay world-space and get synced to them every frame.
     const nav = getNavMaterials(scene);
     const anchors: [number, number, number][] = [[-2.3, -0.02, -0.95], [2.3, -0.02, -0.95], [0, 1.05, -2.3]];
     const mats = [nav.red, nav.green, nav.white];
     for (let i = 0; i < 3; i++) {
+      this.navAnchors.push(this.node(scene, `playerNavAnchor${i}`, ...anchors[i]));
       const light = CreatePlane(`playerNav${i}`, { size: 0.4 }, scene);
       light.material = mats[i];
       light.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      light.parent = this.root;
-      light.position.set(...anchors[i]);
       light.isPickable = false;
       light.visibility = 0;
       this.navLights.push(light);
@@ -244,7 +247,8 @@ export class PlayerJet {
   update(dt: number, ndcX: number, ndcY: number, nightFactor: number): void {
     this.time += dt;
 
-    // navigation lights glow as night falls; tail strobe blinks
+    // navigation lights glow as night falls; tail strobe blinks. synced at the
+    // END of update (after bank/drift below) via syncNavLights().
     const navVis = 0.1 + 0.9 * nightFactor;
     this.navLights[0].visibility = navVis;
     this.navLights[1].visibility = navVis;
@@ -281,6 +285,12 @@ export class PlayerJet {
       this.vfx.wingTrail(this.tmp);
       this.tmp.copyFrom(this.tipR.getAbsolutePosition());
       this.vfx.wingTrail(this.tmp);
+    }
+
+    // glue the nav-light glows to their anchors using THIS frame's transforms
+    for (let i = 0; i < 3; i++) {
+      this.navAnchors[i].computeWorldMatrix(true);
+      this.navLights[i].position.copyFrom(this.navAnchors[i].getAbsolutePosition());
     }
   }
 }

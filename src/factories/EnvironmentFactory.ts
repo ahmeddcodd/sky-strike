@@ -32,10 +32,11 @@ const OCEAN_TILES = 8;
 const SKY_STOPS = [0, 0.38, 0.58, 0.7, 0.78, 1];
 const SKY_DAY = ["#1d5fc0", "#4b8dda", "#8fc0ea", "#d3e8f7", "#efe7d5", "#8fb6d8"];
 const SKY_DUSK = ["#1c2b5e", "#4b4a8e", "#b06a7e", "#e89a63", "#f7bd68", "#6f5a78"];
-const SKY_NIGHT = ["#04070f", "#081226", "#0e1d38", "#15294a", "#1d3457", "#0a1526"];
+// moonlit navy — bright enough that jets and ocean stay readable
+const SKY_NIGHT = ["#0b1530", "#142448", "#1e3560", "#2a4878", "#345381", "#182a4d"];
 
 const FOG_DAY = new Color3(0.72, 0.84, 0.94);
-const FOG_NIGHT = new Color3(0.05, 0.09, 0.16);
+const FOG_NIGHT = new Color3(0.1, 0.16, 0.27);
 
 interface DriftCloud {
   mesh: Mesh;
@@ -160,18 +161,19 @@ export class Environment {
     this.lastApplied = n;
     this.redrawSky(n);
 
-    // the lights drive the whole lit world's brightness
-    this.hemi.intensity = 0.85 - 0.55 * n;
-    this.hemi.diffuse = Color3.Lerp(new Color3(1, 1, 1), new Color3(0.56, 0.64, 0.8), n);
-    this.hemi.groundColor = Color3.Lerp(new Color3(0.45, 0.55, 0.68), new Color3(0.08, 0.11, 0.18), n);
-    this.sun.intensity = 1.0 - 0.82 * n;
-    this.sun.diffuse = Color3.Lerp(new Color3(1, 0.96, 0.88), new Color3(0.66, 0.74, 0.88), n);
+    // the lights drive the whole lit world's brightness — a generous moonlight
+    // floor keeps the night readable (playtest: full 0.3/0.18 was too dark)
+    this.hemi.intensity = 0.85 - 0.41 * n;
+    this.hemi.diffuse = Color3.Lerp(new Color3(1, 1, 1), new Color3(0.66, 0.74, 0.9), n);
+    this.hemi.groundColor = Color3.Lerp(new Color3(0.45, 0.55, 0.68), new Color3(0.14, 0.19, 0.3), n);
+    this.sun.intensity = 1.0 - 0.64 * n;
+    this.sun.diffuse = Color3.Lerp(new Color3(1, 0.96, 0.88), new Color3(0.72, 0.8, 0.94), n);
 
     const fog = Color3.Lerp(FOG_DAY, FOG_NIGHT, n);
     this.scene.fogColor.copyFrom(fog);
     this.scene.clearColor.set(fog.r, fog.g, fog.b, 1);
 
-    this.oceanMat.diffuseColor = Color3.Lerp(new Color3(0.58, 0.62, 0.68), new Color3(0.34, 0.42, 0.56), n);
+    this.oceanMat.diffuseColor = Color3.Lerp(new Color3(0.58, 0.62, 0.68), new Color3(0.44, 0.52, 0.66), n);
     this.oceanMat.specularColor = Color3.Lerp(new Color3(0.4, 0.4, 0.34), new Color3(0.5, 0.56, 0.68), n);
 
     this.sunPlane.visibility = Math.max(0, 1 - n * 1.6);
@@ -490,27 +492,31 @@ export class Environment {
   }
 
   private createSearchlights(): void {
+    // thin, faint pencil beams far off to the sides — distant AA searchlights,
+    // not stage lighting (playtest: wide bright cones crossing mid-screen read
+    // as concert beams)
     const mat = new StandardMaterial("searchlightMat", this.scene);
-    mat.emissiveColor = new Color3(0.6, 0.7, 0.9);
+    mat.emissiveColor = new Color3(0.55, 0.65, 0.85);
     mat.diffuseColor = Color3.Black();
     mat.disableLighting = true;
-    mat.alpha = 0.15;
+    mat.alpha = 0.06;
     mat.alphaMode = 1; // additive
     mat.fogEnabled = false;
     mat.backFaceCulling = false;
 
     const configs = [
-      { x: -110, z: 340, phase: 0, tilt: 0.12 },
-      { x: 130, z: 400, phase: 2.1, tilt: -0.1 },
+      { x: -220, z: 420, phase: 0, tilt: 0.1, lean: -0.22 },
+      { x: 250, z: 470, phase: 2.1, tilt: -0.08, lean: 0.26 },
     ];
     for (let i = 0; i < configs.length; i++) {
       const cfg = configs[i];
       const pivot = new TransformNode(`searchlightPivot${i}`, this.scene);
       pivot.position.set(cfg.x, -31, cfg.z);
-      const beam = CreateCylinder(`searchlight${i}`, { height: 150, diameterTop: 17, diameterBottom: 1.5, tessellation: 8 }, this.scene);
+      pivot.metadata = { lean: cfg.lean };
+      const beam = CreateCylinder(`searchlight${i}`, { height: 190, diameterTop: 6, diameterBottom: 1, tessellation: 8 }, this.scene);
       beam.material = mat;
       beam.parent = pivot;
-      beam.position.y = 75;
+      beam.position.y = 95;
       beam.isPickable = false;
       beam.visibility = 0;
       pivot.rotation.x = cfg.tilt;
@@ -690,9 +696,11 @@ export class Environment {
       }
     }
 
-    // sweeping searchlights (visible at night via applyNight)
+    // sweeping searchlights (visible at night via applyNight) — slow sweep
+    // around an outward lean so the beams never converge over the player
     for (const light of this.searchlights) {
-      light.pivot.rotation.z = Math.sin(this.time * 0.28 + light.phase) * 0.38;
+      const lean = (light.pivot.metadata as { lean: number }).lean;
+      light.pivot.rotation.z = lean + Math.sin(this.time * 0.16 + light.phase) * 0.24;
     }
 
     // distant flak bursts — war ambience

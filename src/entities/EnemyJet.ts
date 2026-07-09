@@ -35,7 +35,8 @@ export class EnemyJet {
   private flashTimer = 0;
   private trailTimer = 0;
   private smokeTimer = 0;
-  private navLights: Mesh[] = []; // [red, green, white-strobe]
+  private navLights: Mesh[] = []; // [red, green, white-strobe] — world-space, synced to anchors
+  private navAnchors: TransformNode[] = [];
   private dir = new Vector3(0, 0, -1);
   private tmp = new Vector3();
   private tmp2 = new Vector3();
@@ -79,18 +80,25 @@ export class EnemyJet {
       this.hitboxes.push(box);
     }
 
-    // navigation lights: red port, green starboard, white tail strobe
+    // Navigation lights: red port, green starboard, white tail strobe.
+    // Billboarded planes must NOT be parented to a rotating mesh (Babylon
+    // mis-places them while the jet banks) — anchors ride the jet, the glow
+    // planes stay world-space and get synced to them every frame.
     const nav = getNavMaterials(scene);
     const anchors = [variant.navLeft, variant.navRight, variant.navTail];
     const mats = [nav.red, nav.green, nav.white];
     for (let i = 0; i < 3; i++) {
+      const anchor = new TransformNode(`enemyNavAnchor_${def.id}${index}_${i}`, scene);
+      anchor.parent = this.visual;
+      anchor.position.copyFrom(anchors[i]);
+      this.navAnchors.push(anchor);
+
       const light = CreatePlane(`enemyNav_${def.id}${index}_${i}`, { size: 0.42 }, scene);
       light.material = mats[i];
       light.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      light.parent = this.visual;
-      light.position.copyFrom(anchors[i]);
       light.isPickable = false;
       light.visibility = 0;
+      light.setEnabled(false);
       this.navLights.push(light);
     }
 
@@ -116,12 +124,14 @@ export class EnemyJet {
     this.visual.position.set(0, 0, 0);
     this.root.position.copyFrom(path.p0);
     this.root.setEnabled(true);
+    for (const light of this.navLights) light.setEnabled(true);
     this.active = true;
   }
 
   deactivate(): void {
     this.active = false;
     this.root.setEnabled(false);
+    for (const light of this.navLights) light.setEnabled(false);
   }
 
   /** Applies damage with hit feedback. Returns true when this hit destroyed the jet. */
@@ -170,8 +180,13 @@ export class EnemyJet {
       }
     }
 
-    // navigation lights: faint by day, glowing at night; tail strobe blinks ~1Hz
+    // navigation lights: faint by day, glowing at night; tail strobe blinks ~1Hz.
+    // synced AFTER this frame's transforms so they stay glued to the jet
     const navVis = 0.08 + 0.92 * nightFactor;
+    for (let i = 0; i < 3; i++) {
+      this.navAnchors[i].computeWorldMatrix(true);
+      this.navLights[i].position.copyFrom(this.navAnchors[i].getAbsolutePosition());
+    }
     this.navLights[0].visibility = navVis;
     this.navLights[1].visibility = navVis;
     this.navLights[2].visibility = navVis * (Math.sin(this.age * 6.5 + this.weavePhase) > 0.55 ? 1 : 0.08);
