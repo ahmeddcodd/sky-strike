@@ -1,5 +1,8 @@
-import { SAVE_KEY } from "../game/Constants";
 import type { PlayablesSDK } from "./PlayablesSDK";
+
+// Best score lives in YouTube cloud storage (per-user) via the Playables SDK.
+// Outside Playables the SDK calls are no-ops, so the best score is in-memory
+// for the session only — there is no local storage anywhere in the game.
 
 interface SaveData {
   bestScore: number;
@@ -14,7 +17,7 @@ export class SaveSystem {
   }
 
   async load(): Promise<void> {
-    const raw = await this.playables.loadData(SAVE_KEY);
+    const raw = await this.playables.loadData();
     if (!raw) return;
     try {
       const data = JSON.parse(raw) as Partial<SaveData>;
@@ -24,13 +27,13 @@ export class SaveSystem {
     }
   }
 
-  /** Returns true when the score is a new best (and persists it). */
+  /** Returns true when the score is a new best (and persists it to the cloud). */
   submitScore(score: number): boolean {
     this.playables.sendScore(score);
     if (score <= this.bestScore) return false;
     this.bestScore = score;
     const data: SaveData = { bestScore: score };
-    void this.playables.saveData(SAVE_KEY, JSON.stringify(data));
+    void this.playables.saveData(JSON.stringify(data));
     return true;
   }
 }

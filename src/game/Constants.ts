@@ -189,5 +189,3 @@ export const INPUT = {
 } as const;
 
 export const DIFFICULTY_CLAMP_DT = 1 / 30; // max delta time fed to game logic
-
-export const SAVE_KEY = "skystrike3d_save_v1";

@@ -91,11 +91,14 @@ await shot("06-restarted");
 console.log("score after restart:", await text(".score-value"));
 console.log("gameover hidden:", await page.locator(".over-title").isVisible().then((v) => !v));
 
-step("reload — best score persisted?");
+step("reload — persistence is cloud-only (no localStorage)");
+// Best score persists ONLY through YouTube cloud storage; the SDK is a no-op
+// when served locally, so outside Playables a reload resets the best (by design).
+console.log("localStorage keys (want 0 — no local storage anywhere):", await page.evaluate(() => Object.keys(localStorage).length));
 await page.goto(BASE, { waitUntil: "load" });
 await page.waitForTimeout(2200);
 await shot("07-reload-best");
-console.log("start best banner:", JSON.stringify(await text(".best-banner")));
+console.log("start best banner after reload:", JSON.stringify(await text(".best-banner")), "(empty locally — cloud-only)");
 
 step("console + errors");
 console.log("playables logs:", consoleLogs.filter((l) => l.includes("[Playables]")));

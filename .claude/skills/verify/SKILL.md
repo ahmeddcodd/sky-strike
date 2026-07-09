@@ -23,6 +23,8 @@ Playwright is a devDependency and uses system Edge — no browser download:
   - `burst.mjs` — 8 rapid screenshots while holding fire, to catch short-lived tracers/muzzle flashes.
   - `probe.mjs` — live scene interrogation: in debug builds `window.__scene` is exposed, so `page.evaluate` can inspect any mesh/material/texture (this is how the ocean CLAMP-vs-WRAP texture bug was found) and recolor meshes to locate them on screen.
   - `controls.mjs` — both control schemes: desktop mouse-follow with hidden cursor + hold-to-fire, and touch drag (crosshair moves by finger delta × `INPUT.DRAG_GAIN`, holds fire, position persists on release). Touch is dispatched via CDP `Input.dispatchTouchEvent`; runs at deviceScaleFactor 2. There is no joystick (removed at user request).
+  - `playables.mjs` — YouTube Playables SDK integration. **Blocks the real `youtube.com/game_api` request** (it defines its own `window.ytgame` with `IN_PLAYABLES_ENV=false` when not embedded, which clobbers a stub) and injects a fake `ytgame` via `addInitScript` with `IN_PLAYABLES_ENV=true`. Asserts: `firstFrameReady`/`gameReady` fire once, `game.loadData` seeds the best score, `system.onPause`/`onResume` pause/resume the loop (via `window.__paused`), `system.onAudioEnabledChange` mutes (via `window.__audioMuted`), `engagement.sendScore` fires on game over, and `localStorage` stays empty.
+  - `combat.mjs` — enemy return fire (hp chip), interceptable missiles, and the three power-up pods (heavy/missiles/ghost).
 - Launch options that matter: `channel: "msedge"`, `headless: true`, `args: ["--enable-unsafe-swiftshader"]` (software WebGL), viewport 390×844, `hasTouch: true`.
 - Load `http://localhost:<port>/?debug=1` to get the DebugSystem even in prod builds.
 
@@ -33,7 +35,7 @@ Playwright is a devDependency and uses system Edge — no browser download:
 - Aim: desktop = mouse-follow (no button); touch = drag anywhere (delta × DRAG_GAIN). Hold fires in both.
 - Debug hotkeys (keyboard): `` ` `` toggle hitboxes/ray/danger plane · `J` spawn jet · `C` clear · `I` invincible.
 - Game over: stop shooting ~30–60 s → `.over-title` appears; stats in `.stats`; restart via `pointerdown` on `.btn` (NOT `click` — the button listens to pointerdown).
-- Persistence: reload and check `.best-banner` shows `BEST <n>` (localStorage fallback of PlayablesSDK).
+- Persistence: cloud-only via the Playables SDK — there is **no localStorage**. Outside Playables (local/headless) the SDK is a no-op, so a reload resets the best; the score persists in-memory within a session only. Use `playables.mjs` (with a stubbed `ytgame`) to verify the cloud path.
 - Playables lifecycle: dev console logs `[Playables] firstFrameReady` then `gameReady` once, right after first frame.
 
 ## Gotchas

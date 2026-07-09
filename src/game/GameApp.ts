@@ -102,7 +102,11 @@ export class GameApp {
     this.wire();
 
     if (import.meta.env.DEV || new URLSearchParams(location.search).has("debug")) {
-      (window as { __scene?: Scene }).__scene = this.scene; // live-inspection hook for the verify driver
+      // live-inspection hooks for the verify driver
+      const w = window as { __scene?: Scene; __audioMuted?: boolean; __paused?: boolean };
+      w.__scene = this.scene;
+      Object.defineProperty(w, "__audioMuted", { get: () => this.audio.isMuted, configurable: true });
+      Object.defineProperty(w, "__paused", { get: () => this.paused, configurable: true });
       this.debug = new DebugSystem(this.scene, this.engine, {
         manager: this.enemyManager,
         spawner: this.spawner,

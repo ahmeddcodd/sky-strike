@@ -23,6 +23,10 @@ export class AudioSystem {
     if (this.ctx.state === "suspended") void this.ctx.resume();
   }
 
+  get isMuted(): boolean {
+    return this.muted;
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     if (this.master && this.ctx) {
