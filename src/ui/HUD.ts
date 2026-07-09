@@ -19,6 +19,26 @@ export interface HpBarInfo {
   width: number; // px
 }
 
+// winged jet badge over the title (top-view jet between speed bars)
+const EMBLEM_SVG = `<svg viewBox="0 0 140 56">
+  <defs>
+    <linearGradient id="emJet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#bfe4fa"/>
+      <stop offset="1" stop-color="#5fb6e8"/>
+    </linearGradient>
+  </defs>
+  <g fill="#7fc8ef" opacity="0.8">
+    <path d="M4 31 h36 l-6 4 H12 Z"/>
+    <path d="M16 24 h28 l-5 4 H22 Z"/>
+    <path d="M28 17 h20 l-4 4 H33 Z"/>
+    <path d="M136 31 h-36 l6 4 h22 Z"/>
+    <path d="M124 24 h-28 l5 4 h18 Z"/>
+    <path d="M112 17 h-20 l4 4 h11 Z"/>
+  </g>
+  <path fill="url(#emJet)" d="M70 2 C72 9 73 15 73 21 L102 38 L102 42 L73 33 L72 44 L81 50 L81 53 L70 49 L59 53 L59 50 L68 44 L67 33 L38 42 L38 38 L67 21 C67 15 68 9 70 2 Z"/>
+</svg>`;
+
 const CROSSHAIR_SVG = `<svg viewBox="0 0 56 56">
   <circle cx="28" cy="28" r="21" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2.4"/>
   <circle cx="28" cy="28" r="2.6" fill="#fff"/>
@@ -42,6 +62,7 @@ export class HUD {
   onRestart: () => void = () => {};
 
   private crosshairEl: HTMLDivElement;
+  private topBar: HTMLDivElement;
   private scoreEl: HTMLDivElement;
   private playerHp: HTMLDivElement;
   private playerHpFill: HTMLDivElement;
@@ -72,8 +93,12 @@ export class HUD {
       return node;
     };
 
-    // top bar: hull bar + score
-    const top = el("div", "hud-top", root);
+    // always-on subtle frame vignette (cinematic depth; below all other HUD)
+    el("div", "frame-vignette", root);
+
+    // top bar: hull bar + score (hidden while menus are up)
+    const top = el("div", "hud-top hud-off", root);
+    this.topBar = top;
     this.playerHp = el("div", "player-hp", top);
     el("div", "player-hp-label", this.playerHp).textContent = "HULL";
     const hpTrack = el("div", "hpbar fixed", this.playerHp);
@@ -122,12 +147,15 @@ export class HUD {
     }
 
     // start overlay
-    this.startOverlay = el("div", "overlay", root);
-    const title = el("div", "game-title", this.startOverlay);
+    this.startOverlay = el("div", "overlay menu", root);
+    const menu = el("div", "menu-box", this.startOverlay);
+    el("div", "menu-emblem", menu).innerHTML = EMBLEM_SVG;
+    const title = el("div", "game-title", menu);
     title.innerHTML = "SKY STRIKE<small>3D</small>";
-    this.startBest = el("div", "best-banner", this.startOverlay);
-    el("div", "tap-hint", this.startOverlay).textContent = "TAP TO START";
-    this.controlHint = el("div", "control-hint", this.startOverlay);
+    el("div", "menu-tagline", menu).textContent = "ENDLESS ARCADE JET COMBAT";
+    this.startBest = el("div", "best-banner", menu);
+    el("div", "tap-hint", menu).textContent = "TAP TO START";
+    this.controlHint = el("div", "control-hint", menu);
     this.controlHint.textContent = "DRAG TO AIM · HOLD TO FIRE";
     this.startOverlay.addEventListener("pointerdown", () => {
       if (this.startOverlay.classList.contains("hidden")) return;
@@ -136,17 +164,25 @@ export class HUD {
     });
 
     // game over overlay
-    this.overOverlay = el("div", "overlay hidden", root);
-    el("div", "over-title", this.overOverlay).textContent = "GAME OVER";
-    this.overStats = el("div", "stats", this.overOverlay);
-    this.overBest = el("div", "best-banner", this.overOverlay);
-    const restartBtn = el("button", "btn", this.overOverlay);
+    this.overOverlay = el("div", "overlay defeat hidden", root);
+    const overBox = el("div", "over-box", this.overOverlay);
+    el("div", "over-sub", overBox).textContent = "MISSION FAILED";
+    el("div", "over-title", overBox).textContent = "GAME OVER";
+    this.overStats = el("div", "stats", overBox);
+    this.overBest = el("div", "best-banner", overBox);
+    const restartBtn = el("button", "btn", overBox);
     restartBtn.textContent = "RESTART";
     restartBtn.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       this.overOverlay.classList.add("hidden");
       this.onRestart();
     });
+  }
+
+  /** Shows/hides the in-game HUD chips (menus should sit on a clean scene). */
+  setHudVisible(visible: boolean): void {
+    this.topBar.classList.toggle("hud-off", !visible);
+    if (!visible) this.warningEl.classList.remove("live"); // no stale WARNING behind overlays
   }
 
   setCrosshair(x: number, y: number): void {

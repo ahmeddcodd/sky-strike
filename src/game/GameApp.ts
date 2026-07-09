@@ -326,6 +326,7 @@ export class GameApp {
     this.hud.setWave(0);
     this.hud.setHealth(this.health.fraction);
     this.hud.setPowerUp(null);
+    this.hud.setHudVisible(true);
     this.input.center();
     this.audio.unlock();
     this.audio.uiTap();
@@ -366,6 +367,7 @@ export class GameApp {
     this.missiles.clearAll(true);
     this.powerUps.reset();
     this.hud.setFiring(false);
+    this.hud.setHudVisible(false);
     this.audio.gameOver();
     const isNewBest = this.save.submitScore(this.score.score);
     this.hud.showGameOver({
