@@ -4,6 +4,7 @@ import type { TargetCamera } from "@babylonjs/core/Cameras/targetCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { POWERUP, WORLD } from "../game/Constants";
 import { PowerUpPod, type PowerUpType } from "../entities/PowerUpPod";
+import type { AssetLibrary } from "../assets/AssetLibrary";
 import { makeFlightPath } from "./FlightPathSystem";
 import type { PlayerJet } from "../entities/PlayerJet";
 import type { WeaponSystem } from "./WeaponSystem";
@@ -39,13 +40,13 @@ export class PowerUpSystem {
   private spawnPos = new Vector3();
   private endPos = new Vector3();
 
-  constructor(scene: Scene, camera: TargetCamera, engine: Engine, player: PlayerJet, weapon: WeaponSystem) {
+  constructor(scene: Scene, camera: TargetCamera, engine: Engine, player: PlayerJet, weapon: WeaponSystem, assets: AssetLibrary) {
     this.camera = camera;
     this.engine = engine;
     this.player = player;
     this.weapon = weapon;
     for (let i = 0; i < POWERUP.POOL; i++) {
-      this.pods.push(new PowerUpPod(i, scene));
+      this.pods.push(new PowerUpPod(i, scene, assets));
     }
   }
 

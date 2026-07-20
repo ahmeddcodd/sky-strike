@@ -24,6 +24,7 @@ import { PlayerJet } from "../entities/PlayerJet";
 import type { EnemyJet } from "../entities/EnemyJet";
 import type { PowerUpType } from "../entities/PowerUpPod";
 import { HUD, type HpBarInfo } from "../ui/HUD";
+import { AssetLibrary } from "../assets/AssetLibrary";
 
 const POWERUP_NAMES: Record<PowerUpType, string> = {
   heavy: "HEAVY BULLETS",
@@ -37,19 +38,19 @@ export class GameApp {
   private engine: Engine;
   private scene: Scene;
   private camera: TargetCamera;
-  private env: Environment;
+  private env!: Environment;
   private vfx: VFXSystem;
   private audio = new AudioSystem();
-  private input: InputSystem;
-  private hud: HUD;
-  private enemyManager: EnemyManager;
-  private spawner: EnemySpawner;
-  private playerJet: PlayerJet;
-  private raycaster: RaycastShootingSystem;
-  private weapon: WeaponSystem;
-  private missiles: MissileSystem;
-  private enemyFire: EnemyFireSystem;
-  private powerUps: PowerUpSystem;
+  private input!: InputSystem;
+  private hud!: HUD;
+  private enemyManager!: EnemyManager;
+  private spawner!: EnemySpawner;
+  private playerJet!: PlayerJet;
+  private raycaster!: RaycastShootingSystem;
+  private weapon!: WeaponSystem;
+  private missiles!: MissileSystem;
+  private enemyFire!: EnemyFireSystem;
+  private powerUps!: PowerUpSystem;
   private score = new ScoreSystem();
   private health = new HealthSystem();
   private combo = new ComboSystem();
@@ -85,18 +86,22 @@ export class GameApp {
     this.camera.maxZ = 1500;
 
     this.vfx = new VFXSystem(this.scene);
-    this.env = createEnvironment(this.scene, this.vfx);
     this.save = new SaveSystem(playables);
-    this.enemyManager = new EnemyManager(this.scene, this.vfx);
+  }
+
+  private async initialize(): Promise<void> {
+    const assets = await AssetLibrary.load(this.scene);
+    this.env = createEnvironment(this.scene, this.vfx, assets);
+    this.enemyManager = new EnemyManager(this.scene, this.vfx, assets);
     this.spawner = new EnemySpawner(this.enemyManager, this.camera, this.engine);
-    this.playerJet = new PlayerJet(this.scene, this.camera, this.vfx);
-    this.missiles = new MissileSystem(this.scene, this.vfx, this.playerJet);
+    this.playerJet = new PlayerJet(this.scene, this.camera, this.vfx, assets);
+    this.missiles = new MissileSystem(this.scene, this.vfx, this.playerJet, assets);
     this.raycaster = new RaycastShootingSystem(this.scene, this.camera, this.enemyManager, this.missiles);
     this.weapon = new WeaponSystem(this.raycaster, this.vfx, this.audio, this.playerJet);
-    this.powerUps = new PowerUpSystem(this.scene, this.camera, this.engine, this.playerJet, this.weapon);
-    this.raycaster.setPods(this.powerUps); // late injection: powerUps needs weapon, weapon needs raycaster
+    this.powerUps = new PowerUpSystem(this.scene, this.camera, this.engine, this.playerJet, this.weapon, assets);
+    this.raycaster.setPods(this.powerUps);
     this.enemyFire = new EnemyFireSystem(this.scene, this.enemyManager, this.playerJet, this.vfx, this.audio, this.missiles);
-    this.input = new InputSystem(canvas);
+    this.input = new InputSystem(this.engine.getRenderingCanvas()!);
     this.hud = new HUD(document.getElementById("hud")!);
 
     this.wire();
@@ -221,7 +226,8 @@ export class GameApp {
     this.engine.setHardwareScalingLevel(1 / dpr);
   }
 
-  start(): void {
+  async start(): Promise<void> {
+    await this.initialize();
     this.audio.setMuted(!this.playables.audioEnabled);
     this.input.center();
     this.hud.setTouchMode(this.input.touchMode);

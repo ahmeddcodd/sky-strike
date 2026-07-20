@@ -27,9 +27,16 @@ npm run package  # build + zip an uploadable YouTube Playables bundle
 
 Append `?debug=1` to the URL for debug tools: `` ` `` toggles hitboxes/raycast/danger-zone visuals · `J` spawns a jet · `C` clears enemies · `I` toggles invincibility.
 
+## Blender art pipeline
+
+- The player fighter, three enemy airframes, friendly/hostile missiles, all three power-up pods, ocean battlefield, horizon cliffs, fortified island, rock stack, buoy, searchlight emplacement, burning wreck, and destroyer are authored as Blender assets.
+- Every unique runtime GLB is validated at exactly **10,500 triangles** (the requested 10,000–11,000 medium-poly band). See `public/assets/models/asset-manifest.json` for measured counts and file sizes.
+- Editable sources live in `art/blender/`; `war_environment_master.blend` is the assembled map. Runtime-ready GLBs live in `public/assets/models/` and share geometry across pooled/cloned instances.
+- Rebuild the library with Blender 5.2+: `blender --background --python tools/blender/build_assets.py`. Rebuild the editable map and preview with `blender --background --python tools/blender/build_master_scene.py`.
+
 ## Tech notes
 
-- **Everything is procedural** — jets, sky, clouds, ocean, islands, and all sound effects are generated in code. No 3D model, texture, or audio files; the whole game ships at ~260 KB gzipped.
+- Babylon.js glTF loading finishes before the first playable frame. Sky and cloud sprites, the scrolling ocean material, exhaust, projectiles, explosions, navigation lights, and the day/night grade remain real-time effects layered over Blender-authored geometry.
 - Deterministic Bézier flight paths, raycast shooting against simplified hitboxes, object pooling throughout, frame-rate-independent logic (clamped delta time).
 - Fully integrated YouTube Playables SDK (`src/systems/PlayablesSDK.ts`): honors YouTube pause/resume and mute/unmute, and persists the best score to YouTube cloud storage only — **no local storage**. Outside Playables the SDK is a no-op and the game runs standalone.
 - Deploys to Vercel out of the box (`vercel.json` included): import the repo or run `npx vercel`.

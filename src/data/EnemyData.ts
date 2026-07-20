@@ -1,5 +1,5 @@
 // Enemy type definitions (spec §15). Gameplay values live here; the matching
-// procedural models are built by JetFactory per variant.
+// Blender GLB models are selected by JetFactory per variant.
 
 export type EnemyTypeId = "normal" | "fast" | "armored";
 

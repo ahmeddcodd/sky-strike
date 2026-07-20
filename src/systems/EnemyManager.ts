@@ -5,6 +5,7 @@ import { EnemyJet } from "../entities/EnemyJet";
 import { ALL_ENEMY_TYPES, ENEMY_TYPES, type EnemyTypeId } from "../data/EnemyData";
 import { makeFlightPath } from "./FlightPathSystem";
 import type { VFXSystem } from "./VFXSystem";
+import type { AssetLibrary } from "../assets/AssetLibrary";
 
 export class EnemyManager {
   /** Flat list across all type pools — raycast and debug iterate this. */
@@ -16,12 +17,12 @@ export class EnemyManager {
   private pools = new Map<EnemyTypeId, EnemyJet[]>();
   private vfx: VFXSystem;
 
-  constructor(scene: Scene, vfx: VFXSystem) {
+  constructor(scene: Scene, vfx: VFXSystem, assets: AssetLibrary) {
     this.vfx = vfx;
     let index = 0;
     for (const type of ALL_ENEMY_TYPES) {
       const def = ENEMY_TYPES[type];
-      const variant = createJetBaseMesh(scene, type);
+      const variant = createJetBaseMesh(assets, type);
       const pool: EnemyJet[] = [];
       for (let i = 0; i < def.poolSize; i++) {
         const jet = new EnemyJet(index++, scene, variant, def, vfx);

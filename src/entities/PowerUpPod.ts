@@ -5,12 +5,11 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { POWERUP } from "../game/Constants";
 import { makeFlareTexture } from "../factories/MeshUtils";
 import { evaluatePath, type FlightPath } from "../systems/FlightPathSystem";
+import type { AssetLibrary } from "../assets/AssetLibrary";
 
 // Glowing pickup pod drifting toward the player among the enemies — shoot it
 // to collect. Spinning emissive core + ring with a pulsing halo, colored per
@@ -65,8 +64,7 @@ export class PowerUpPod {
   type: PowerUpType = "heavy";
 
   private spinner: TransformNode;
-  private core: Mesh;
-  private ring: Mesh;
+  private visuals: Record<PowerUpType, Mesh>;
   private glow: Mesh;
   private mats: Record<PowerUpType, PodMaterials>;
   private path: FlightPath | null = null;
@@ -75,20 +73,20 @@ export class PowerUpPod {
   private age = 0;
   private tmp = new Vector3();
 
-  constructor(index: number, scene: Scene) {
+  constructor(index: number, scene: Scene, assets: AssetLibrary) {
     this.mats = getPodMaterials(scene);
     this.root = new TransformNode(`pod${index}`, scene);
     this.spinner = new TransformNode(`podSpin${index}`, scene);
     this.spinner.parent = this.root;
 
-    this.core = CreateSphere(`podCore${index}`, { diameter: 0.95, segments: 6 }, scene);
-    this.core.scaling.set(1, 0.78, 1);
-    this.core.parent = this.spinner;
-    this.core.isPickable = false;
-
-    this.ring = CreateCylinder(`podRing${index}`, { height: 0.08, diameter: 1.9, tessellation: 18 }, scene);
-    this.ring.parent = this.spinner;
-    this.ring.isPickable = false;
+    this.visuals = {
+      heavy: assets.clone("powerup_heavy", `podHeavy${index}`, this.spinner),
+      missiles: assets.clone("powerup_missiles", `podMissiles${index}`, this.spinner),
+      ghost: assets.clone("powerup_ghost", `podGhost${index}`, this.spinner),
+    };
+    for (const type of Object.keys(this.visuals) as PowerUpType[]) {
+      this.visuals[type].setEnabled(type === "heavy");
+    }
 
     const box = CreateBox(`podHit${index}`, { size: POWERUP.HITBOX }, scene);
     box.parent = this.root;
@@ -117,8 +115,9 @@ export class PowerUpPod {
     this.progress = 0;
     this.age = 0;
     const mats = this.mats[type];
-    this.core.material = mats.core;
-    this.ring.material = mats.core;
+    for (const key of Object.keys(this.visuals) as PowerUpType[]) {
+      this.visuals[key].setEnabled(key === type);
+    }
     this.glow.material = mats.glow;
     this.root.position.copyFrom(path.p0);
     this.glow.position.copyFrom(path.p0);

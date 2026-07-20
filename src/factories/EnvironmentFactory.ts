@@ -11,12 +11,11 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
-import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
-import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { NIGHT, STARS, WORLD } from "../game/Constants";
-import { paint, seededRand, makeFlareTexture, lerpColor } from "./MeshUtils";
+import { seededRand, makeFlareTexture, lerpColor } from "./MeshUtils";
 import type { VFXSystem } from "../systems/VFXSystem";
+import type { AssetLibrary } from "../assets/AssetLibrary";
 
 // Ocean war airspace with a forward-flight illusion (scrolling ocean, islands,
 // wisps) and a day → dusk → night cycle: the sky gradient is re-keyed, the scene
@@ -66,6 +65,7 @@ export class Environment {
 
   private scene: Scene;
   private vfx: VFXSystem;
+  private assets: AssetLibrary;
   private nightTarget = 0;
   private lastApplied = -1;
 
@@ -88,9 +88,10 @@ export class Environment {
   private rand = seededRand(7);
   private flakPos = new Vector3();
 
-  constructor(scene: Scene, vfx: VFXSystem) {
+  constructor(scene: Scene, vfx: VFXSystem, assets: AssetLibrary) {
     this.scene = scene;
     this.vfx = vfx;
+    this.assets = assets;
     scene.clearColor = new Color4(FOG_DAY.r, FOG_DAY.g, FOG_DAY.b, 1);
     scene.fogMode = 2; // Scene.FOGMODE_EXP2 (constant inlined to keep imports lean)
     scene.fogDensity = WORLD.FOG_DENSITY;
@@ -358,54 +359,25 @@ export class Environment {
     tex.anisotropicFilteringLevel = 8; // keep the waves readable at grazing angles
     this.oceanTex = tex;
 
-    const ocean = CreateGround("ocean", { width: OCEAN_SIZE, height: OCEAN_SIZE }, this.scene);
+    const ocean = this.assets.clone("ocean_battlefield", "ocean");
     this.oceanMat = new StandardMaterial("oceanMat", this.scene);
     this.oceanMat.diffuseTexture = tex;
     // hemi + sun sum to ~1.85× — damp the multiplier or the waves clip to white
     this.oceanMat.diffuseColor = new Color3(0.58, 0.62, 0.68);
     this.oceanMat.specularColor = new Color3(0.4, 0.4, 0.34); // sun glint band
     this.oceanMat.specularPower = 300;
-    ocean.material = this.oceanMat;
+    for (const mesh of ocean.getChildMeshes(false)) mesh.material = this.oceanMat;
     ocean.position.set(0, -32, 400);
     ocean.isPickable = false;
     ocean.freezeWorldMatrix();
   }
 
   private createMountains(): void {
-    const tex = new DynamicTexture("mountainTex", { width: 1024, height: 256 }, this.scene, false);
-    const ctx = tex.getContext() as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, 1024, 256);
-    // Ridge silhouettes on the horizon, drawn "upside down" (see class note):
-    // solid base fills from canvas y=0, peaks point down-canvas (= up on screen).
-    const ridge = (baseY: number, amp: number, color: string, seed: number) => {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      for (let x = 0; x <= 1024; x += 32) {
-        const n = Math.sin(x * 0.013 + seed) + Math.sin(x * 0.031 + seed * 2.7) * 0.55;
-        ctx.lineTo(x, baseY + Math.abs(n) * amp);
-      }
-      ctx.lineTo(1024, 0);
-      ctx.closePath();
-      ctx.fill();
-    };
-    ridge(108, 48, "rgba(200,216,235,0.85)", 1.3); // far peaks, hazier
-    ridge(98, 30, "rgba(165,185,212,0.9)", 4.1); // near ridge, lower and darker
-    tex.update(false);
-    tex.hasAlpha = true;
-
-    const plane = CreatePlane("mountains", { width: 700, height: 80 }, this.scene);
-    const mat = new StandardMaterial("mountainMat", this.scene);
-    // lit (not emissive) so the ridges darken naturally with the day/night lights
-    mat.diffuseTexture = tex;
-    mat.opacityTexture = tex;
-    mat.emissiveColor = new Color3(0.14, 0.17, 0.22);
-    mat.specularColor = Color3.Black();
-    mat.fogEnabled = false;
-    plane.material = mat;
-    plane.position.set(0, -4, 470);
-    plane.isPickable = false;
-    plane.freezeWorldMatrix();
+    const cliffs = this.assets.clone("horizon_cliffs", "horizonCliffs");
+    cliffs.position.set(0, -32, 470);
+    cliffs.scaling.set(1, 1.5, 1);
+    cliffs.isPickable = false;
+    cliffs.freezeWorldMatrix();
   }
 
   private makeCloudTexture(name: string, seed: number): DynamicTexture {
@@ -499,27 +471,7 @@ export class Environment {
   }
 
   private makeIsland(index: number): Mesh {
-    const rand = seededRand(101 + index * 37);
-    const parts: Mesh[] = [];
-    const base = 26 + rand() * 30;
-
-    const sand = CreateCylinder(`islandBase${index}`, { height: 1.4, diameterTop: base * 0.86, diameterBottom: base, tessellation: 9 }, this.scene);
-    paint(sand, "#d8c8a0");
-    parts.push(sand);
-
-    const peaks = 2 + Math.floor(rand() * 2);
-    for (let p = 0; p < peaks; p++) {
-      const height = 6 + rand() * 12;
-      const cone = CreateCylinder(`islandPeak${index}_${p}`, { height, diameterTop: 0, diameterBottom: base * (0.3 + rand() * 0.3), tessellation: 7 }, this.scene);
-      paint(cone, p === 0 ? "#4f8a52" : rand() > 0.5 ? "#6aa564" : "#8b909a");
-      cone.position.set((rand() - 0.5) * base * 0.4, height / 2, (rand() - 0.5) * base * 0.4);
-      parts.push(cone);
-    }
-
-    const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
-    merged.name = `island${index}`;
-    merged.isPickable = false;
-    return merged;
+    return this.assets.clone("island", `island${index}`);
   }
 
   private createIslands(): void {
@@ -542,43 +494,12 @@ export class Environment {
   // A small cluster of weathered rocks poking out of the water — cheap detail
   // to keep the flanks from feeling empty. Merged to one mesh.
   private makeRockStack(index: number): Mesh {
-    const rand = seededRand(701 + index * 53);
-    const parts: Mesh[] = [];
-    const lumps = 2 + Math.floor(rand() * 3);
-    for (let i = 0; i < lumps; i++) {
-      const h = 3 + rand() * 7;
-      const d = 3 + rand() * 6;
-      const rock = CreateCylinder(`sideRock${index}_${i}`, { height: h, diameterTop: d * (0.3 + rand() * 0.4), diameterBottom: d, tessellation: 6 }, this.scene);
-      paint(rock, rand() > 0.5 ? "#6b6f74" : "#565b62");
-      rock.position.set((rand() - 0.5) * 7, h / 2, (rand() - 0.5) * 7);
-      rock.rotation.y = rand() * Math.PI;
-      rock.rotation.z = (rand() - 0.5) * 0.3;
-      parts.push(rock);
-    }
-    const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
-    merged.name = `sideRockStack${index}`;
-    merged.isPickable = false;
-    return merged;
+    return this.assets.clone("rock_stack", `sideRockStack${index}`);
   }
 
   // A channel marker buoy — a little pop of color/life bobbing on the water.
   private makeBuoy(index: number): Mesh {
-    const parts: Mesh[] = [];
-    const body = CreateCylinder(`buoyBody${index}`, { height: 3.4, diameterTop: 1.1, diameterBottom: 1.9, tessellation: 8 }, this.scene);
-    paint(body, index % 2 === 0 ? "#d24b3f" : "#e0a52f");
-    parts.push(body);
-    const cap = CreateCylinder(`buoyCap${index}`, { height: 1.0, diameter: 1.2, tessellation: 8 }, this.scene);
-    paint(cap, "#2b3038");
-    cap.position.y = 2.0;
-    parts.push(cap);
-    const pole = CreateCylinder(`buoyPole${index}`, { height: 1.6, diameter: 0.2, tessellation: 5 }, this.scene);
-    paint(pole, "#2b3038");
-    pole.position.y = 3.3;
-    parts.push(pole);
-    const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
-    merged.name = `buoy${index}`;
-    merged.isPickable = false;
-    return merged;
+    return this.assets.clone("buoy", `buoy${index}`);
   }
 
   // Decorative props that scroll down dedicated left/right lanes so the flanks
@@ -636,6 +557,8 @@ export class Environment {
       const pivot = new TransformNode(`searchlightPivot${i}`, this.scene);
       pivot.position.set(cfg.x, -31, cfg.z);
       pivot.metadata = { lean: cfg.lean };
+      const emplacement = this.assets.clone("searchlight_emplacement", `searchlightBase${i}`, pivot);
+      emplacement.scaling.setAll(1.25);
       const beam = CreateCylinder(`searchlight${i}`, { height: 190, diameterTop: 6, diameterBottom: 1, tessellation: 8 }, this.scene);
       beam.material = mat;
       beam.parent = pivot;
@@ -679,21 +602,7 @@ export class Environment {
 
     // burning wreck — a listing, broken hull with a flickering fire glow
     {
-      const parts: Mesh[] = [];
-      const hull = CreateBox("wreckHull", { width: 13, height: 3, depth: 4.5 }, this.scene);
-      paint(hull, "#20262f");
-      parts.push(hull);
-      const bow = CreateBox("wreckBow", { width: 5, height: 2.6, depth: 4 }, this.scene);
-      paint(bow, "#181d24");
-      bow.position.set(-8, 1.2, 0.5);
-      bow.rotation.z = 0.5;
-      parts.push(bow);
-      const mast = CreateCylinder("wreckMast", { height: 6, diameter: 0.5, tessellation: 6 }, this.scene);
-      paint(mast, "#14181e");
-      mast.position.set(3, 3.5, 0);
-      mast.rotation.z = -0.55;
-      parts.push(mast);
-      const wreck = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
+      const wreck = this.assets.clone("burning_wreck", "burningWreck");
       wreck.material = mat;
       wreck.rotation.z = 0.14;
       wreck.position.set(-85, -30.5, 260);
@@ -711,28 +620,7 @@ export class Environment {
 
     // warship silhouette — hull, superstructure, forward gun; lights at night
     {
-      const parts: Mesh[] = [];
-      const hull = CreateBox("shipHull", { width: 20, height: 2.6, depth: 5.5 }, this.scene);
-      paint(hull, "#39434f");
-      parts.push(hull);
-      const deck = CreateBox("shipDeck", { width: 8, height: 2.2, depth: 3.6 }, this.scene);
-      paint(deck, "#46515e");
-      deck.position.set(1.5, 2.2, 0);
-      parts.push(deck);
-      const bridge = CreateBox("shipBridge", { width: 3.4, height: 2.4, depth: 2.6 }, this.scene);
-      paint(bridge, "#525d6a");
-      bridge.position.set(2.5, 4.2, 0);
-      parts.push(bridge);
-      const turret = CreateBox("shipTurret", { width: 2.6, height: 1.2, depth: 2.2 }, this.scene);
-      paint(turret, "#2f3843");
-      turret.position.set(-6.5, 2, 0);
-      parts.push(turret);
-      const barrel = CreateCylinder("shipBarrel", { height: 4.4, diameter: 0.4, tessellation: 6 }, this.scene);
-      paint(barrel, "#262e38");
-      barrel.rotation.z = Math.PI / 2 - 0.12;
-      barrel.position.set(-9.5, 2.6, 0);
-      parts.push(barrel);
-      const ship = Mesh.MergeMeshes(parts, true, true, undefined, false, false)!;
+      const ship = this.assets.clone("destroyer", "destroyer");
       ship.material = mat;
       ship.position.set(105, -30.8, 520);
       ship.isPickable = false;
@@ -861,6 +749,6 @@ export class Environment {
   }
 }
 
-export function createEnvironment(scene: Scene, vfx: VFXSystem): Environment {
-  return new Environment(scene, vfx);
+export function createEnvironment(scene: Scene, vfx: VFXSystem, assets: AssetLibrary): Environment {
+  return new Environment(scene, vfx, assets);
 }

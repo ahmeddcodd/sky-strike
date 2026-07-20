@@ -1,9 +1,9 @@
 import { defineConfig } from "vite";
 
 // YouTube Playables serves the game from a nested sandbox path, so every asset
-// reference MUST be relative (`base: "./"`) or it 404s. The game is fully
-// procedural (no asset files) and makes no external network calls except the
-// youtube.com SDK script, which satisfies the Playables self-contained rule.
+// reference MUST be relative (`base: "./"`) or it 404s. Blender-authored GLBs
+// live under public/assets and are copied into the self-contained build; the
+// only external request is the youtube.com Playables SDK script.
 export default defineConfig({
   base: "./",
   build: {

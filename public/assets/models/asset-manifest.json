@@ -1,0 +1,128 @@
+{
+  "generator": "Blender 5.2 / tools/blender/build_assets.py",
+  "triangleRange": [
+    10000,
+    11000
+  ],
+  "assets": [
+    {
+      "id": "player_fighter",
+      "triangles": 10500,
+      "blend": "art/blender/player_fighter.blend",
+      "glb": "public/assets/models/player_fighter.glb",
+      "bytes": 264696
+    },
+    {
+      "id": "enemy_fighter",
+      "triangles": 10500,
+      "blend": "art/blender/enemy_fighter.blend",
+      "glb": "public/assets/models/enemy_fighter.glb",
+      "bytes": 259920
+    },
+    {
+      "id": "enemy_interceptor",
+      "triangles": 10500,
+      "blend": "art/blender/enemy_interceptor.blend",
+      "glb": "public/assets/models/enemy_interceptor.glb",
+      "bytes": 258808
+    },
+    {
+      "id": "enemy_bomber",
+      "triangles": 10500,
+      "blend": "art/blender/enemy_bomber.blend",
+      "glb": "public/assets/models/enemy_bomber.glb",
+      "bytes": 261416
+    },
+    {
+      "id": "missile_player",
+      "triangles": 10500,
+      "blend": "art/blender/missile_player.blend",
+      "glb": "public/assets/models/missile_player.glb",
+      "bytes": 257984
+    },
+    {
+      "id": "missile_enemy",
+      "triangles": 10500,
+      "blend": "art/blender/missile_enemy.blend",
+      "glb": "public/assets/models/missile_enemy.glb",
+      "bytes": 257976
+    },
+    {
+      "id": "powerup_heavy",
+      "triangles": 10500,
+      "blend": "art/blender/powerup_heavy.blend",
+      "glb": "public/assets/models/powerup_heavy.glb",
+      "bytes": 254520
+    },
+    {
+      "id": "powerup_missiles",
+      "triangles": 10500,
+      "blend": "art/blender/powerup_missiles.blend",
+      "glb": "public/assets/models/powerup_missiles.glb",
+      "bytes": 254568
+    },
+    {
+      "id": "powerup_ghost",
+      "triangles": 10500,
+      "blend": "art/blender/powerup_ghost.blend",
+      "glb": "public/assets/models/powerup_ghost.glb",
+      "bytes": 252472
+    },
+    {
+      "id": "island",
+      "triangles": 10500,
+      "blend": "art/blender/island.blend",
+      "glb": "public/assets/models/island.glb",
+      "bytes": 259204
+    },
+    {
+      "id": "rock_stack",
+      "triangles": 10500,
+      "blend": "art/blender/rock_stack.blend",
+      "glb": "public/assets/models/rock_stack.glb",
+      "bytes": 252160
+    },
+    {
+      "id": "buoy",
+      "triangles": 10500,
+      "blend": "art/blender/buoy.blend",
+      "glb": "public/assets/models/buoy.glb",
+      "bytes": 257616
+    },
+    {
+      "id": "searchlight_emplacement",
+      "triangles": 10500,
+      "blend": "art/blender/searchlight_emplacement.blend",
+      "glb": "public/assets/models/searchlight_emplacement.glb",
+      "bytes": 271620
+    },
+    {
+      "id": "burning_wreck",
+      "triangles": 10500,
+      "blend": "art/blender/burning_wreck.blend",
+      "glb": "public/assets/models/burning_wreck.glb",
+      "bytes": 269756
+    },
+    {
+      "id": "destroyer",
+      "triangles": 10500,
+      "blend": "art/blender/destroyer.blend",
+      "glb": "public/assets/models/destroyer.glb",
+      "bytes": 276028
+    },
+    {
+      "id": "ocean_battlefield",
+      "triangles": 10500,
+      "blend": "art/blender/ocean_battlefield.blend",
+      "glb": "public/assets/models/ocean_battlefield.glb",
+      "bytes": 238900
+    },
+    {
+      "id": "horizon_cliffs",
+      "triangles": 10500,
+      "blend": "art/blender/horizon_cliffs.blend",
+      "glb": "public/assets/models/horizon_cliffs.glb",
+      "bytes": 271584
+    }
+  ]
+}

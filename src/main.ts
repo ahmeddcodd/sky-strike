@@ -8,10 +8,8 @@ const playables = new PlayablesSDK();
 playables.init();
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
-try {
-  new GameApp(canvas, playables).start();
-} catch (e) {
+void new GameApp(canvas, playables).start().catch((e) => {
   // never trap the user behind the loader if boot fails
   document.getElementById("loader")?.classList.add("done");
   throw e;
-}
+});

@@ -1,6 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
@@ -30,7 +30,7 @@ export class EnemyJet {
   /** Armored jets launch one missile per approach. */
   hasFiredMissile = false;
 
-  private mat: StandardMaterial;
+  private visualMeshes: Mesh[] = [];
   private vfx: VFXSystem;
   private path: FlightPath | null = null;
   private progress = 0;
@@ -55,9 +55,15 @@ export class EnemyJet {
 
     this.visual = variant.mesh.clone(`enemyVisual_${def.id}${index}`, this.root);
     this.visual.setEnabled(true);
-    this.mat = (variant.mesh.material as StandardMaterial).clone(`enemyMat_${def.id}${index}`)!;
-    this.visual.material = this.mat;
+    this.visual.rotationQuaternion = null;
+    this.visual.rotation.y = 0;
     this.visual.isPickable = false;
+    this.visualMeshes = this.visual.getChildMeshes(false) as Mesh[];
+    for (const mesh of this.visualMeshes) {
+      mesh.isPickable = false;
+      mesh.overlayColor = new Color3(1, 0.34, 0.2);
+      mesh.overlayAlpha = 0.72;
+    }
 
     // hitboxes are slightly larger than the visual mesh (mobile fairness, spec §18)
     const k = def.hitboxScale;
@@ -130,7 +136,7 @@ export class EnemyJet {
     this.flashTimer = 0;
     this.trailTimer = 0;
     this.smokeTimer = 0;
-    this.mat.emissiveColor.set(0, 0, 0);
+    for (const mesh of this.visualMeshes) mesh.renderOverlay = false;
     this.visual.position.set(0, 0, 0);
     this.root.position.copyFrom(path.p0);
     this.root.setEnabled(true);
@@ -182,10 +188,10 @@ export class EnemyJet {
     // hit flash + tiny cosmetic shake on the visual only
     if (this.flashTimer > 0) {
       this.flashTimer -= dt;
-      this.mat.emissiveColor.set(1, 0.45, 0.35);
+      for (const mesh of this.visualMeshes) mesh.renderOverlay = true;
       this.visual.position.set((Math.random() - 0.5) * 0.14, (Math.random() - 0.5) * 0.14, 0);
       if (this.flashTimer <= 0) {
-        this.mat.emissiveColor.set(0, 0, 0);
+        for (const mesh of this.visualMeshes) mesh.renderOverlay = false;
         this.visual.position.set(0, 0, 0);
       }
     }

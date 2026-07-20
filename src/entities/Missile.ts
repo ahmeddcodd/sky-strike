@@ -46,6 +46,8 @@ export class Missile {
 
     this.visual = source.clone(`missileVisual${tag}${index}`, this.root)!;
     this.visual.setEnabled(true);
+    this.visual.rotationQuaternion = null;
+    this.visual.rotation.y = 0;
     if (hostile) this.visual.scaling.setAll(1.6); // readability at distance
 
     if (hostile) {
